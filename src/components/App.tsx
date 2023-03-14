@@ -5,6 +5,8 @@ import { WagmiConfig, configureChains, createClient } from "wagmi";
 import { goerli } from "wagmi/chains";
 import { publicProvider } from "wagmi/providers/public";
 
+import Bridge from "../pages/Bridge";
+
 import Header from "./layout/Header";
 // import Footer from "./layout/Footer";
 
@@ -23,7 +25,7 @@ function App() {
           <Header />
           <div className="main">
             <Routes>
-              <Route path="/" />
+              <Route path="/" element={<Bridge />} />
             </Routes>
           </div>
           {/* <Footer /> */}
