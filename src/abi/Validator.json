@@ -1,0 +1,199 @@
+{
+    "abi": [
+        {
+          "inputs": [],
+          "stateMutability": "nonpayable",
+          "type": "constructor"
+        },
+        {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "owner",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "withdrawalToken",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "amount",
+              "type": "uint256"
+            }
+          ],
+          "name": "Verified",
+          "type": "event"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "_bridge",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "_from",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "_amount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "_sourceToken",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "_wrappedToken",
+              "type": "address"
+            },
+            {
+              "internalType": "enum TokenType",
+              "name": "_withdrawalTokenType",
+              "type": "uint8"
+            }
+          ],
+          "name": "createRequest",
+          "outputs": [
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "validator",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "bridge",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "from",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amount",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "address",
+                  "name": "sourceToken",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "wrappedToken",
+                  "type": "address"
+                },
+                {
+                  "internalType": "enum TokenType",
+                  "name": "withdrawalTokenType",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "nonce",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IValidator.WithdrawalRequest",
+              "name": "",
+              "type": "tuple"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "internalType": "address",
+              "name": "_from",
+              "type": "address"
+            }
+          ],
+          "name": "getNonce",
+          "outputs": [
+            {
+              "internalType": "uint256",
+              "name": "nonce",
+              "type": "uint256"
+            }
+          ],
+          "stateMutability": "view",
+          "type": "function"
+        },
+        {
+          "inputs": [
+            {
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "validator",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "bridge",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "from",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "amount",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "address",
+                  "name": "sourceToken",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "wrappedToken",
+                  "type": "address"
+                },
+                {
+                  "internalType": "enum TokenType",
+                  "name": "withdrawalTokenType",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "nonce",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IValidator.WithdrawalRequest",
+              "name": "_req",
+              "type": "tuple"
+            },
+            {
+              "internalType": "bytes",
+              "name": "_sig",
+              "type": "bytes"
+            }
+          ],
+          "name": "verify",
+          "outputs": [],
+          "stateMutability": "nonpayable",
+          "type": "function"
+        }
+      ]
+}

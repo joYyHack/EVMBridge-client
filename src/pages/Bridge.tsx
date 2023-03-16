@@ -1,5 +1,5 @@
 import { Tabs, TabList, TabPanels, Tab, TabPanel } from "@chakra-ui/react";
-import LockView from "./LockView";
+import DepositView from "./DepositView";
 function Bridge() {
   return (
     <div className="bridge">
@@ -11,7 +11,7 @@ function Bridge() {
 
         <TabPanels>
           <TabPanel>
-            <LockView />
+            <DepositView />
           </TabPanel>
           <TabPanel>
             <p>Claim</p>
