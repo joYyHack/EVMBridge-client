@@ -1,8 +1,6 @@
 export const privKey = (hexName: string) => {
   return "0x" + hexName.padEnd(64, "0");
 };
-
-// export const signWithdrawalRequest = async (
 //   validatorWallet: Wallet,
 //   validatorContractAddress: string,
 //   request: WithdrawalRequest
