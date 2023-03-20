@@ -1,50 +1,105 @@
 import {
+  Box,
   Card,
-  CardHeader,
   CardBody,
-  CardFooter,
+  CardHeader,
+  Flex,
   Heading,
-  Text,
-  Select,
-  InputGroup,
   Input,
-  InputRightElement,
-  IconButton,
-  FormControl,
-  FormLabel,
-  FormErrorMessage,
-  FormHelperText,
+  Select,
+  Spinner,
+  Text,
+  useBoolean,
 } from "@chakra-ui/react";
-
-import { CheckIcon } from "@chakra-ui/icons";
+import { FetchTokenResult } from "@wagmi/core";
+import { BaseSyntheticEvent, useState } from "react";
+import type {
+  UserTokenData,
+  ValidationResult,
+  TokenData,
+  DepositStruct,
+} from "../../utils/types";
 
 type TokenProps = {
-  address: string;
-  setToken: any;
+  currentUserAddress: string | undefined;
+  userTokens: UserTokenData[];
+  handleTokenInputOrSelect: (e: BaseSyntheticEvent) => void;
+  validateTokenAddress: (e: BaseSyntheticEvent) => Promise<ValidationResult>;
 };
+const TokenCard = ({
+  currentUserAddress,
+  userTokens,
+  handleTokenInputOrSelect,
+  validateTokenAddress,
+}: TokenProps) => {
+  const [isValidAddress, setValidAddress] = useState<boolean>(false);
+  const [desc, setDesc] = useState<string>("");
+  const [isLoading, loader] = useBoolean(false);
 
-const TokenCard = ({ address, setToken }: TokenProps) => {
   return (
     <Card className="mx-5 my-5" align="center">
       <CardHeader>
-        <Heading>Choose Token Address</Heading>
+        <Heading>Choose Token</Heading>
       </CardHeader>
       <CardBody>
-        <InputGroup>
-          <Input
-            placeholder="0xC2C527C0CACF457746Bd31B2a698Fe89de2b6d49"
-            value={address}
-            onChange={setToken}
-          />
-          {/* <InputRightElement>
-              <IconButton
-                aria-label="Validate token address"
-                icon={<CheckIcon />}
-                onClick={() => validateTokenAddress("")}
-                //type="submit"
-              /> 
-            </InputRightElement>*/}
-        </InputGroup>
+        <Flex
+          flexDirection="column"
+          justifyContent="center"
+          alignItems="center"
+        >
+          <Flex flexDirection="row">
+            <Input
+              minWidth="400px"
+              placeholder="0xC2C527C0CACF457746Bd31B2a698Fe89de2b6d49"
+              variant="flushed"
+              mr="4"
+              borderColor="lime"
+              value={currentUserAddress}
+              isInvalid={!isValidAddress}
+              onChange={handleTokenInputOrSelect}
+              onBlur={async (e: BaseSyntheticEvent) => {
+                loader.on();
+
+                if (e.target.value.trim() !== currentUserAddress) {
+                  const result = await validateTokenAddress(e);
+                  setValidAddress(result.isSuccess);
+                  setDesc(
+                    result.isSuccess
+                      ? result.validationObj?.symbol
+                      : result.errorMsg
+                  );
+                } else {
+                  setValidAddress(true);
+                  setDesc("");
+                }
+
+                loader.off();
+              }}
+            />
+            <Select
+              variant="flushed"
+              ml="4"
+              placeholder="Select Token"
+              value={currentUserAddress ?? ""}
+              onChange={(e: BaseSyntheticEvent) => {
+                handleTokenInputOrSelect(e);
+                setValidAddress(e.target.value);
+                setDesc("");
+              }}
+            >
+              {userTokens.map((token) => {
+                return (
+                  <option key={token.address} value={token.address}>
+                    {token.symbol}
+                  </option>
+                );
+              })}
+            </Select>
+          </Flex>
+          <Box height="4" mt="3">
+            {isLoading ? <Spinner /> : <Text>{desc}</Text>}
+          </Box>
+        </Flex>
       </CardBody>
     </Card>
   );

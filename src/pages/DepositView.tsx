@@ -1,3 +1,4 @@
+import { formatFixed, parseFixed } from "@ethersproject/bignumber";
 import {
   Accordion,
   AccordionButton,
@@ -8,17 +9,18 @@ import {
   Flex,
   Heading,
   Text,
+  useBoolean,
 } from "@chakra-ui/react";
-import { formatFixed } from "@ethersproject/bignumber";
 import {
+  Chain,
   fetchToken,
   FetchTokenResult,
   prepareWriteContract,
   readContract,
   writeContract,
 } from "@wagmi/core";
-import { BigNumber, constants, EventFilter } from "ethers";
-import { parseEther } from "ethers/lib/utils.js";
+import { BigNumber, constants, EventFilter, utils, providers } from "ethers";
+import { isAddress, parseEther } from "ethers/lib/utils.js";
 import { BaseSyntheticEvent, useEffect, useState } from "react";
 import {
   configureChains,
@@ -27,6 +29,7 @@ import {
   useNetwork,
   useContract,
   useContractEvent,
+  Address,
 } from "wagmi";
 import { goerli, hardhat, polygonMumbai } from "wagmi/chains";
 import { publicProvider } from "wagmi/providers/public";
@@ -39,248 +42,298 @@ import TokenCard from "../components/Cards/TokenCard";
 import {
   setValidator,
   createReleaseRequest,
-  signReleaseRequest,
+  signWithdrawalRequest,
 } from "../utils/validator";
+import { Alchemy, Network } from "alchemy-sdk";
+import { AlchemyMultichainClient } from "../utils/alchemy/alchemy-multichain-client";
+import type {
+  UserTokenData,
+  ValidationResult,
+  TokenData,
+  DepositStruct,
+  TxStruct,
+} from "../utils/types";
+import networks from "../utils/networksDict";
+import { addresses } from "../utils/consts&enums";
 
-type Address = `0x${string}`;
-type TokenData = Omit<FetchTokenResult, "totalSupply">;
-type DepositStruct = {
-  token: TokenData;
-  amount: string;
+type DepositProps = {
+  alchemy: AlchemyMultichainClient;
+  availableChains: Chain[];
+  currentUserAddress: Address;
+  userTokens: UserTokenData[];
+  userDeposits: DepositStruct[];
+  currentChain: Chain;
+  getTokenData: (tokenAddress: Address) => Promise<TokenData>;
+  getUserTokens: () => Promise<void>;
+  handleChainSelect: (e: BaseSyntheticEvent) => void;
 };
+const DepositView = ({
+  alchemy,
+  availableChains,
+  currentUserAddress,
+  userTokens,
+  userDeposits,
+  currentChain,
+  getTokenData,
+  getUserTokens,
+  handleChainSelect,
+}: DepositProps) => {
+  const [currentUserToken, setCurrentUserToken] = useState<UserTokenData>();
+  const [amount, setAmount] = useState<string>("0");
+  const [isValidAmount, setIsValidAmount] = useState<boolean>(false);
 
-const DepositView = () => {
-  const bridgeAddress: Address = "0xce56e2D1e03e653bc95F113177A2Be6002068B7E";
-  const erc20SafeAddress: Address =
-    "0x268653b20B3a3aE011A42d2b0D6b9F97eC42ca2d";
+  const [tokenApproved, tokenApproval] = useBoolean();
+  const [tokenDeposited, tokenDeposit] = useBoolean();
+  const [tokenReleased, tokenRelease] = useBoolean();
 
-  const { provider } = configureChains(
-    [goerli, polygonMumbai, hardhat],
-    [publicProvider()]
-  );
+  const [inDeposit, depositProcess] = useBoolean();
+  const [inRelease, releaseProcess] = useBoolean();
 
-  const { isConnected, address: currentAddress } = useAccount();
-  const { chain, chains } = useNetwork();
-
-  const bridgeContract = useContract({
-    address: bridgeAddress,
-    abi: Bridge.abi,
-    signerOrProvider: provider({ chainId: chain?.id }),
+  const [approvalTx, setApprovalTx] = useState<TxStruct>({
+    hash: "",
+    err: "",
+  });
+  const [depositTx, setDepositTx] = useState<TxStruct>({
+    hash: "",
+    err: "",
+  });
+  const [releaseTx, setReleaseTx] = useState<TxStruct>({
+    hash: "",
+    err: "",
   });
 
-  const [targetChain, setTargetChain] = useState<number>();
-  const [token, setToken] = useState<Address>(
-    "0x025F22Ccbe9FCEbC4dFC359E36051498eC8c9c3F"
-  );
-  const [amount, setAmount] = useState<BigNumber>(parseEther("5"));
-  const [zerosAmount, setZerosAmount] = useState<number>(0);
-  const [deposits, setDeposits] = useState<DepositStruct[]>([]);
-  const [depositIsProcessing, startDepositProcess] = useState<boolean>(false);
-  const [releaseIsProcessing, startReleaseProcess] = useState<boolean>(false);
+  // TOKENS
+  const handleTokenInputOrSelect = (e: BaseSyntheticEvent) => {
+    const selectedToken = userTokens.find(
+      (token) => token.address === e.target.value.trim()
+    );
+    selectedToken
+      ? validateAmount(selectedToken, Number.parseFloat(amount))
+      : setIsValidAmount(false);
 
-  const getDepositedAmount = async (tokenAddress: Address) => {
-    const data = await readContract({
-      address: erc20SafeAddress,
-      abi: ERC20Safe.abi,
-      functionName: "getDepositedAmount",
-      args: [currentAddress, tokenAddress],
-    });
-
-    return data as string;
+    setCurrentUserToken(selectedToken);
   };
-  const getTokenData = async (tokenAddress: Address) => {
-    const token = await fetchToken({
-      address: tokenAddress,
-    });
+  const validateTokenAddress = async (
+    e: BaseSyntheticEvent
+  ): Promise<ValidationResult> => {
+    const val = e.target.value.trim();
+    if (utils.isAddress(val)) {
+      if (
+        (await alchemy
+          .forNetwork(networks[currentChain.id])
+          .core.getCode(val)) !== "0x"
+      ) {
+        try {
+          const token = await getTokenData(val as Address);
 
-    return token as TokenData;
-  };
-  const updateDeposits = async (owner: Address, tokenAddress: Address) => {
-    if (owner === currentAddress) {
-      const depositIndex = deposits.findIndex(
-        (deposit) => deposit.token.address === tokenAddress
-      );
+          const userBalance = (
+            await alchemy
+              .forNetwork(networks[currentChain.id])
+              .core.getTokenBalances(currentUserAddress, [token.address])
+          ).tokenBalances[0].tokenBalance;
 
-      const depositedAmount = await getDepositedAmount(tokenAddress as Address);
-      const tokenData = await getTokenData(tokenAddress as Address);
+          const userToken = {
+            ...token,
+            userBalance,
+          } as UserTokenData;
 
-      const updatedDeposits =
-        depositIndex === -1
-          ? [
-              ...deposits,
-              {
-                token: tokenData,
-                amount: formatFixed(depositedAmount, tokenData.decimals),
-              } as DepositStruct,
-            ]
-          : deposits.map((deposit, index) => {
-              if (depositIndex === index)
-                deposit.amount = formatFixed(
-                  depositedAmount,
-                  tokenData.decimals
-                );
-              return deposit;
-            });
+          validateAmount(userToken, Number.parseFloat(amount));
 
-      // updatedDeposits.sort((deposit, nextDeposit) =>
-      //   nextDeposit.amount.sub(deposit.amount).toNumber()
-      // );
+          setCurrentUserToken(userToken);
 
-      setDeposits(updatedDeposits.filter((deposit) => deposit.amount != "0.0"));
-
-      console.log("useContractEvent: Token Deposits", deposits);
-    }
-  };
-
-  useEffect(() => {
-    async function fetchDepositedTokens() {
-      const depositFilter = bridgeContract?.filters.Deposit(
-        currentAddress
-      ) as EventFilter;
-      let depositEvents = await bridgeContract?.queryFilter(depositFilter);
-
-      console.log("useEffect: Deposit events", depositEvents);
-
-      const depositedTokenAddresses = depositEvents
-        ?.map((event) => event.args?.[1] ?? constants.AddressZero)
-        .filter(
-          (address, index, self) =>
-            self.indexOf(address) === index && address !== constants.AddressZero
-        ) as Address[];
-
-      console.log(
-        "useEffect: Filtered deposited tokens",
-        depositedTokenAddresses
-      );
-
-      let tokenDeposits: DepositStruct[] = [];
-      for (const token of depositedTokenAddresses) {
-        const depositedAmount = await getDepositedAmount(token);
-        const tokenData = await getTokenData(token);
-
-        if (!BigNumber.from(depositedAmount).isZero()) {
-          tokenDeposits.push({
-            token: tokenData,
-            amount: formatFixed(depositedAmount, tokenData.decimals),
-          });
+          return {
+            isSuccess: true,
+            errorMsg: "",
+            validationObj: userToken as UserTokenData,
+          };
+        } catch (err) {
+          return { isSuccess: false, errorMsg: "NOT AN ERC20" };
         }
       }
-
-      // tokenDeposits.sort((deposit, nextDeposit) =>
-      //   nextDeposit.amount.sub(deposit.amount).toNumber()
-      // );
-
-      console.log("useEffect: Token deposits", tokenDeposits);
-
-      setDeposits(tokenDeposits);
+      return { isSuccess: false, errorMsg: "NOT A CONTRACT" };
     }
-    fetchDepositedTokens();
-  }, []);
+    return { isSuccess: false, errorMsg: "INVALID ADDRESS" };
+  };
+  const updateCurrentUserToken = async (tokenAddress: string) => {
+    const userBalance = (
+      await alchemy
+        .forNetwork(networks[currentChain.id])
+        .core.getTokenBalances(currentUserAddress, [tokenAddress])
+    ).tokenBalances[0].tokenBalance;
 
-  const handleChainSelect = (e: BaseSyntheticEvent) => {
-    setTargetChain(Number(e.target.value));
-  };
-  const handleTokenInput = (e: BaseSyntheticEvent) => {
-    setToken(e.target.value);
-  };
-  const handleAmountInput = (e: BaseSyntheticEvent) => {
-    setZerosAmount(0);
-    setAmount(BigNumber.from(e.target.value));
-  };
-  const handleAddZerosAmountClick = () => {
-    setZerosAmount(zerosAmount < 18 ? zerosAmount + 6 : 0);
-    setAmount(BigNumber.from(`1`.padEnd(zerosAmount + 1, "0")));
+    const userToken = {
+      ...currentUserToken,
+    } as UserTokenData;
+    userToken.userBalance = userBalance as string;
+
+    validateAmount(userToken, Number.parseFloat(amount));
+
+    setCurrentUserToken(userToken);
+
+    return {
+      isSuccess: true,
+      errorMsg: "",
+      validationObj: userToken as UserTokenData,
+    };
   };
 
-  useContractEvent({
-    address: bridgeAddress,
-    abi: Bridge.abi,
-    eventName: "Deposit",
-    async listener(depositer, tokenAddress, _) {
-      await updateDeposits(depositer as Address, tokenAddress as Address);
-    },
-  });
-  useContractEvent({
-    address: bridgeAddress,
-    abi: Bridge.abi,
-    eventName: "Release",
-    async listener(releaser, tokenAddress, _) {
-      await updateDeposits(releaser as Address, tokenAddress as Address);
-    },
-  });
+  // TOKENS AMOUNT
+  const handleAmountInput = (amount: string) => {
+    setAmount(amount);
+  };
+  const handleAmountBlur = (e: BaseSyntheticEvent) => {
+    try {
+      const amountAsNumber = Number.parseFloat(e.target.value);
+      setAmount(e.target.value);
+      currentUserToken
+        ? validateAmount(currentUserToken, amountAsNumber)
+        : setIsValidAmount(false);
+    } catch {
+      setIsValidAmount(false);
+    }
+  };
+  const validateAmount = (currentUserToken: UserTokenData, amount: number) => {
+    const formattedAmount = parseFixed(
+      amount.toString(),
+      currentUserToken.decimals
+    );
+    setIsValidAmount(
+      formattedAmount.lt(currentUserToken.userBalance) && amount > 0
+    );
+  };
+
+  // MODAL
+  const handleCloseModal = () => {
+    setApprovalTx({ hash: "", err: "" });
+    setDepositTx({ hash: "", err: "" });
+    setReleaseTx({ hash: "", err: "" });
+    depositProcess.off();
+    releaseProcess.off();
+  };
 
   const getApproval = async () => {
-    const approval = await readContract({
-      address: token,
-      abi: erc20ABI,
-      functionName: "allowance",
-      args: [currentAddress as Address, erc20SafeAddress],
-    });
+    try {
+      const approval = await readContract({
+        address:
+          (currentUserToken?.address as Address) ?? constants.AddressZero,
+        abi: erc20ABI,
+        functionName: "allowance",
+        args: [currentUserAddress, addresses[currentChain.id].erc20safe],
+      });
 
-    return approval as BigNumber;
+      return approval as BigNumber;
+    } catch (e) {
+      setApprovalTx({ hash: "", err: (e as Error).message });
+      throw new Error();
+    }
   };
 
   const approve = async () => {
-    const config = await prepareWriteContract({
-      address: token,
-      abi: erc20ABI,
-      functionName: "approve",
-      args: [erc20SafeAddress, constants.MaxUint256],
-    });
-
-    await writeContract(config);
+    try {
+      const config = await prepareWriteContract({
+        address:
+          (currentUserToken?.address as Address) ?? constants.AddressZero,
+        abi: erc20ABI,
+        functionName: "approve",
+        args: [addresses[currentChain.id].erc20safe, constants.MaxUint256],
+      });
+      const tx = await writeContract(config);
+      setApprovalTx({ hash: tx.hash, err: "" });
+      const reciept = await tx.wait();
+    } catch (e) {
+      setApprovalTx({ hash: "", err: (e as Error).message });
+      throw new Error();
+    }
   };
-
   const deposit = async () => {
-    const config = await prepareWriteContract({
-      address: bridgeAddress,
-      abi: Bridge.abi,
-      functionName: "deposit",
-      args: [token, amount],
-    });
+    try {
+      const config = await prepareWriteContract({
+        address: addresses[currentChain.id].bridge,
+        abi: Bridge.abi,
+        functionName: "deposit",
+        args: [
+          currentUserToken?.address,
+          parseFixed(amount, currentUserToken?.decimals),
+        ],
+      });
 
-    await writeContract(config);
+      const tx = await writeContract(config);
+      setDepositTx({ hash: tx.hash, err: "" });
+
+      const reciept = await tx.wait();
+    } catch (e) {
+      setDepositTx({ hash: "", err: (e as Error).message });
+      throw new Error();
+    }
   };
 
   const release = async (signature: string) => {
-    const config = await prepareWriteContract({
-      address: bridgeAddress,
-      abi: Bridge.abi,
-      functionName: "release",
-      args: [token, amount, signature],
-    });
-    const { hash } = await writeContract(config);
+    try {
+      const config = await prepareWriteContract({
+        address: addresses[currentChain.id].bridge,
+        abi: Bridge.abi,
+        functionName: "release",
+        args: [
+          currentUserToken?.address,
+          parseFixed(amount, currentUserToken?.decimals),
+          signature,
+        ],
+      });
+      const tx = await writeContract(config);
+      setReleaseTx({ hash: tx.hash, err: "" });
+
+      const reciept = await tx.wait();
+    } catch (e) {
+      setReleaseTx({ hash: "", err: (e as Error).message });
+      throw new Error();
+    }
   };
 
   const handleDepositClick = async () => {
     try {
-      startDepositProcess(true);
+      depositProcess.on();
+
+      tokenApproval.off();
+      tokenDeposit.off();
+
       const approval = await getApproval();
-      if (approval?.lt(amount)) await approve();
+      console.log(
+        "approval",
+        formatFixed(approval, currentUserToken?.decimals)
+      );
+      if (approval?.lt(parseFixed(amount, currentUserToken?.decimals))) {
+        await approve();
+      }
+
+      tokenApproval.on();
 
       await deposit();
+      tokenDeposit.on();
+
+      await updateCurrentUserToken(currentUserToken?.address as string);
     } catch (error) {
-      console.log((error as Error).message);
-    } finally {
-      startDepositProcess(false);
+      console.log(error);
     }
   };
-  const handleRelease = async () => {
+  const handleReleaseClick = async () => {
     try {
-      startReleaseProcess(true);
-      await setValidator(provider({ chainId: chain?.id }));
+      releaseProcess.on();
+
+      tokenRelease.off();
+
       const req = await createReleaseRequest(
-        currentAddress as Address,
-        amount,
-        token
+        currentUserAddress,
+        parseFixed(amount, currentUserToken?.decimals),
+        currentUserToken?.address ?? constants.AddressZero
       );
-      const sig = await signReleaseRequest(req);
+      const sig = await signWithdrawalRequest(req);
 
       await release(sig);
+      tokenRelease.on();
+
+      await updateCurrentUserToken(currentUserToken?.address as string);
     } catch (error) {
       console.log((error as Error).message);
-    } finally {
-      startReleaseProcess(false);
     }
   };
 
@@ -288,21 +341,35 @@ const DepositView = () => {
     <>
       <Container maxWidth="5xl" mb="8">
         <BridgeCard
-          availableChains={chains}
+          availableChains={availableChains}
           onChainSelect={handleChainSelect}
         />
-        <TokenCard address={token} setToken={handleTokenInput} />
+        <TokenCard
+          currentUserAddress={currentUserToken?.address}
+          userTokens={userTokens}
+          handleTokenInputOrSelect={handleTokenInputOrSelect}
+          validateTokenAddress={validateTokenAddress}
+        />
         <AmountCard
-          amount={amount.toString()}
-          setAmount={handleAmountInput}
-          zerosAmount={zerosAmount}
-          setZerosAmount={handleAddZerosAmountClick}
+          currentUserToken={currentUserToken}
+          amount={amount}
+          isValidAmount={isValidAmount}
+          handleAmountInput={handleAmountInput}
+          handleAmountBlur={handleAmountBlur}
         />
         <DepositReleaseButton
+          currentChain={currentChain}
+          tokenApproved={tokenApproved}
+          tokenDeposited={tokenDeposited}
+          tokenReleased={tokenReleased}
           deposit={handleDepositClick}
-          release={handleRelease}
-          depositLoading={depositIsProcessing}
-          releaseLoading={releaseIsProcessing}
+          release={handleReleaseClick}
+          approvalTx={approvalTx}
+          depositTx={depositTx}
+          releaseTx={releaseTx}
+          inDeposit={inDeposit}
+          inRelease={inRelease}
+          handleCloseModal={handleCloseModal}
         />
       </Container>
 
@@ -328,7 +395,7 @@ const DepositView = () => {
                 </Heading>
               </Flex>
               <Divider my="4" />
-              {deposits.map((deposit, index) => (
+              {userDeposits.map((deposit, index) => (
                 <Flex
                   key={index}
                   direction="row"
@@ -341,7 +408,7 @@ const DepositView = () => {
                     {deposit.token.symbol}
                   </Text>
                   <Text fontSize="md" flexBasis="40%" textAlign="right">
-                    {deposit.amount}
+                    {formatFixed(deposit.amount, deposit.token.decimals)}
                   </Text>
                 </Flex>
               ))}
