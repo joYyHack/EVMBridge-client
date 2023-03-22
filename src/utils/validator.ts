@@ -5,6 +5,7 @@ import ERC20Safe from "../abi/ERC20Safe.json";
 import { TokenType } from "./consts&enums";
 import { privKey } from "./encoding";
 import { Address } from "wagmi";
+import { fetchToken, getNetwork } from "@wagmi/core";
 import { addresses } from "./consts&enums";
 
 let validatorWalletAddress: Address;
@@ -18,6 +19,8 @@ type WithdrawalRequest = {
   from: string;
   amount: BigNumber;
   sourceToken: string;
+  sourceTokenSymbol: string;
+  sourceTokenName: string;
   wrappedToken: string;
   withdrawalTokenType: TokenType;
   nonce: BigNumber;
@@ -36,6 +39,8 @@ const types = {
     { name: "from", type: "address" },
     { name: "amount", type: "uint256" },
     { name: "sourceToken", type: "address" },
+    { name: "sourceTokenSymbol", type: "string" },
+    { name: "sourceTokenName", type: "string" },
     { name: "wrappedToken", type: "address" },
     { name: "withdrawalTokenType", type: "uint8" },
     { name: "nonce", type: "uint256" },
@@ -56,13 +61,8 @@ export const setValidator = async (newProvider: providers.Provider) => {
   bridgeAddress = addrs.bridge;
   erc20SafeAddress = addrs.erc20safe;
 
-  console.log("validator: ", validatorContractAddress);
-  console.log("bridgeAddress: ", bridgeAddress);
-  console.log("erc20SafeAddress: ", erc20SafeAddress);
-
   domain.chainId = chainId;
   domain.verifyingContract = addrs.validator;
-
   console.log("domain", domain);
 };
 
@@ -82,18 +82,36 @@ export const getWrappedToken = async (sourceToken: string) =>
     args: [sourceToken],
   });
 
+export const getTokenNameAndSymbol = async (
+  token: Address,
+  chainId: number
+) => {
+  const tokenData = await fetchToken({
+    address: token,
+    chainId: chainId,
+  });
+
+  return { name: tokenData.name, symbol: tokenData.symbol };
+};
+
 export const createReleaseRequest = async (
   from: Address,
   amount: BigNumber,
   sourceToken: string
 ) => {
+  const { name, symbol } = await getTokenNameAndSymbol(
+    sourceToken as Address,
+    getNetwork().chain?.id as number
+  );
   return {
     validator: validatorWalletAddress,
     bridge: bridgeAddress,
     from: from.toString(),
     amount,
     sourceToken,
-    wrappedToken: constants.AddressZero,
+    sourceTokenSymbol: symbol,
+    sourceTokenName: name,
+    wrappedToken: await getWrappedToken(sourceToken),
     withdrawalTokenType: TokenType.Native,
     nonce: await getNonce(from),
   } as WithdrawalRequest;
@@ -103,12 +121,19 @@ export const createWithdrawRequest = async (
   amount: BigNumber,
   sourceToken: string
 ) => {
+  const { chain, chains } = getNetwork();
+  const { name, symbol } = await getTokenNameAndSymbol(
+    sourceToken as Address,
+    chains.find((ch) => chain?.id != ch.id)?.id as number
+  );
   return {
     validator: validatorWalletAddress,
     bridge: bridgeAddress,
     from: from.toString(),
     amount,
     sourceToken,
+    sourceTokenSymbol: symbol,
+    sourceTokenName: name,
     wrappedToken: await getWrappedToken(sourceToken),
     withdrawalTokenType: TokenType.Wrapped,
     nonce: await getNonce(from),
