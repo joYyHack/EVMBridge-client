@@ -24,9 +24,9 @@ import { Card, CardHeader, CardBody, CardFooter } from "@chakra-ui/react";
 import { CheckIcon, CloseIcon } from "@chakra-ui/icons";
 import { Chain } from "wagmi";
 import type { TxStruct } from "../../utils/types";
+import { getNetwork } from "@wagmi/core";
 
 type DepositReleaseButtonProps = {
-  currentChain: Chain;
   tokenApproved: boolean;
   tokenDeposited: boolean;
   tokenReleased: boolean;
@@ -38,10 +38,11 @@ type DepositReleaseButtonProps = {
   inDeposit: boolean;
   inRelease: boolean;
   handleCloseModal: () => void;
+  isValidDepositAmount: boolean;
+  isValidReleaseAmount: boolean;
 };
 
 const LockReleaseButton = ({
-  currentChain,
   tokenApproved,
   tokenDeposited,
   tokenReleased,
@@ -53,7 +54,10 @@ const LockReleaseButton = ({
   inDeposit,
   inRelease,
   handleCloseModal,
+  isValidDepositAmount,
+  isValidReleaseAmount,
 }: DepositReleaseButtonProps) => {
+  const currentChain = getNetwork().chain;
   const { isOpen, onOpen, onClose } = useDisclosure();
   return (
     <>
@@ -62,10 +66,11 @@ const LockReleaseButton = ({
           isLoading={inDeposit}
           colorScheme="teal"
           variant="solid"
-          onClick={async (e: BaseSyntheticEvent) => {
+          onClick={async () => {
             onOpen();
             deposit();
           }}
+          isDisabled={!isValidDepositAmount}
         >
           Deposit
         </Button>
@@ -73,11 +78,11 @@ const LockReleaseButton = ({
           isLoading={inRelease}
           colorScheme="teal"
           variant="outline"
-          onClick={async (e: BaseSyntheticEvent) => {
-            console.log(e);
+          onClick={async () => {
             onOpen();
             release();
           }}
+          isDisabled={!isValidReleaseAmount}
         >
           Release
         </Button>
@@ -123,7 +128,7 @@ const LockReleaseButton = ({
                       <Link
                         fontSize="small"
                         color="teal.500"
-                        href={`${currentChain.blockExplorers?.default.url}/tx/${approvalTx.hash}`}
+                        href={`${currentChain?.blockExplorers?.default.url}/tx/${approvalTx.hash}`}
                         isExternal
                       >
                         Tx data: {approvalTx.hash}
@@ -153,7 +158,7 @@ const LockReleaseButton = ({
                       <Link
                         fontSize="small"
                         color="teal.500"
-                        href={`${currentChain.blockExplorers?.default.url}/tx/${depositTx.hash}`}
+                        href={`${currentChain?.blockExplorers?.default.url}/tx/${depositTx.hash}`}
                         isExternal
                       >
                         Tx data: {depositTx.hash}
@@ -186,7 +191,7 @@ const LockReleaseButton = ({
                       <Link
                         fontSize="small"
                         color="teal.500"
-                        href={`${currentChain.blockExplorers?.default.url}/tx/${releaseTx.hash}`}
+                        href={`${currentChain?.blockExplorers?.default.url}/tx/${releaseTx.hash}`}
                         isExternal
                       >
                         Tx data: {releaseTx.hash}
