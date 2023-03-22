@@ -1,5 +1,5 @@
 {
-    "abi": [
+  "abi": [
     {
       "inputs": [],
       "stateMutability": "nonpayable",
@@ -470,6 +470,16 @@
           "internalType": "address",
           "name": "_sourceToken",
           "type": "address"
+        },
+        {
+          "internalType": "string",
+          "name": "_sourceTokenSymbol",
+          "type": "string"
+        },
+        {
+          "internalType": "string",
+          "name": "_sourceTokenName",
+          "type": "string"
         },
         {
           "internalType": "uint256",
