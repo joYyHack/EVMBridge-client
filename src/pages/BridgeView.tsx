@@ -30,7 +30,7 @@ import {
 import Bridge from "../abi/Bridge.json";
 import ERC20Safe from "../abi/ERC20Safe.json";
 import alchemy from "../utils/alchemy/alchemy";
-import { deployment } from "../utils/consts&enums";
+import { deployment, TokenType } from "../utils/consts&enums";
 import { networksDictionary } from "../utils/networksDict";
 import type {
   ClaimStruct,
@@ -42,7 +42,7 @@ import type {
 import { setValidator } from "../utils/validator";
 import ClaimView from "./ClaimView";
 import DepositView from "./DepositView";
-
+import { parseFixed } from "@ethersproject/bignumber";
 type BridgeProps = {
   configuredChains: Chain[];
 };
@@ -64,6 +64,13 @@ function BridgeView({ configuredChains }: BridgeProps) {
   );
   const [targetChain, setTargetChain] = useState<Chain>(availableChains[0]);
 
+  const [currentUserToken, setCurrentUserToken] = useState<UserTokenData>();
+  const [amount, setAmount] = useState<string>("0");
+  const [isValidDepositAmount, setIsValidDepositAmount] =
+    useState<boolean>(false);
+  const [isValidReleaseAmount, setIsValidReleaseAmount] =
+    useState<boolean>(false);
+
   const [userTokens, setUserTokens] = useState<UserTokenData[]>([]);
   const [userDeposits, setDeposits] = useState<DepositStruct[]>([]);
   const [userClaims, setClaims] = useState<ClaimStruct[]>([]);
@@ -72,6 +79,10 @@ function BridgeView({ configuredChains }: BridgeProps) {
   const [claimsAreFetching, fetchingClaims] = useBoolean();
 
   useEffect(() => {
+    setCurrentUserToken(undefined);
+    setIsValidDepositAmount(false);
+    setIsValidReleaseAmount(false);
+
     fetchUserTokens();
     fetchDepositedTokens();
     fetchClaims();
@@ -107,7 +118,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
 
       await updateToken(depositer, tokenAddress);
       await updateDeposit(depositer, tokenAddress);
-      await updateClaim(depositer, tokenAddress, amount);
+      await updateClaimAfterDeposit(depositer, tokenAddress, amount);
     },
   });
   useContractEvent({
@@ -121,27 +132,40 @@ function BridgeView({ configuredChains }: BridgeProps) {
 
       await updateToken(releaser, tokenAddress);
       await updateDeposit(releaser, tokenAddress);
-      //await updateClaim(depositer, tokenAddress, amount);
+      await updateClaimAfterRelease(releaser, tokenAddress, amount);
     },
   });
   useContractEvent({
     address: deployment[targetChain?.id as number].bridge,
     abi: Bridge.abi,
     eventName: "Burn",
-    async listener(burner, wrappedToken, sourceToken, amount) {
-      // await updateToken(releaser, tokenAddress);
-      // await updateDeposit(releaser, tokenAddress);
-      //await updateClaim(depositer, tokenAddress, amount);
+    async listener(_burner, _wrappedToken, _sourceToken, _amount) {
+      const burner = _burner as string;
+      const wrappedToken = _wrappedToken as string;
+      const sourceToken = _sourceToken as string;
+      const amount = _amount as string;
+
+      await updateToken(burner, wrappedToken);
+      await updateClaimAfterBurn(burner, sourceToken, amount);
     },
   });
   useContractEvent({
     address: deployment[targetChain?.id as number].bridge,
     abi: Bridge.abi,
     eventName: "Withdraw",
-    async listener(withdrawer, sourceToken, wrappedToken, amount) {
-      // await updateToken(releaser, tokenAddress);
-      // await updateDeposit(releaser, tokenAddress);
-      //await updateClaim(depositer, tokenAddress, amount);
+    async listener(_withdrawer, _sourceToken, _wrappedToken, _amount) {
+      setCurrentUserToken(undefined);
+      setIsValidDepositAmount(false);
+      setIsValidReleaseAmount(false);
+
+      const withdrawer = _withdrawer as string;
+      const sourceToken = _sourceToken as string;
+      const wrappedToken = _wrappedToken as string;
+      const amount = _amount as string;
+
+      await updateClaimAfterClaim(withdrawer, sourceToken, amount);
+      await updateToken(withdrawer, wrappedToken);
+      //
     },
   });
 
@@ -197,22 +221,20 @@ function BridgeView({ configuredChains }: BridgeProps) {
         const tokens = await alchemy
           .forNetwork(networksDictionary[currentChain?.id as number])
           .core.getTokenBalances(owner, [tokenAddress]);
-
+        console.log("tokens", tokens);
         const currentToken = tokens.tokenBalances[0];
 
+        const tokenIndex = userTokens.findIndex(
+          (tok) =>
+            tok.address.toLowerCase() ===
+            currentToken.contractAddress.toLowerCase()
+        );
+
         let udpatedUserTokens: UserTokenData[] = [];
+
         if (!BigNumber.from(currentToken.tokenBalance).isZero()) {
-          if (userTokens.length !== 0) {
-            udpatedUserTokens = userTokens.map((token) => {
-              if (
-                token.address.toLowerCase() ===
-                currentToken.contractAddress.toLowerCase()
-              ) {
-                token.userBalance = currentToken.tokenBalance as string;
-              }
-              return token;
-            });
-          } else {
+          if (tokenIndex === -1) {
+            udpatedUserTokens = [...userTokens];
             const tokenData = await getTokenData(currentToken.contractAddress);
 
             if (tokenData) {
@@ -223,6 +245,16 @@ function BridgeView({ configuredChains }: BridgeProps) {
 
               udpatedUserTokens.push(userToken);
             }
+          } else {
+            udpatedUserTokens = userTokens.map((token) => {
+              if (
+                token.address.toLowerCase() ===
+                currentToken.contractAddress.toLowerCase()
+              ) {
+                token.userBalance = currentToken.tokenBalance as string;
+              }
+              return token;
+            });
           }
         } else {
           udpatedUserTokens = userTokens.filter(
@@ -246,6 +278,28 @@ function BridgeView({ configuredChains }: BridgeProps) {
       console.log("Error 'updateToken'", (err as Error).message);
     }
   };
+  const updateCurrentUserToken = async (tokenAddress: string) => {
+    const userBalance = (
+      await alchemy
+        .forNetwork(networksDictionary[currentChain?.id as number])
+        .core.getTokenBalances(account.address as string, [tokenAddress])
+    ).tokenBalances[0].tokenBalance;
+
+    const userToken = {
+      ...currentUserToken,
+    } as UserTokenData;
+    userToken.userBalance = userBalance as string;
+
+    validateAmount(userToken, Number.parseFloat(amount));
+
+    setCurrentUserToken(userToken);
+
+    return {
+      isSuccess: true,
+      errorMsg: "",
+      validationObj: userToken as UserTokenData,
+    };
+  };
   const getTokenData = async (tokenAddress: string, chainId?: number) => {
     try {
       const token = await fetchToken({
@@ -266,6 +320,36 @@ function BridgeView({ configuredChains }: BridgeProps) {
       console.log("Error 'getTokenData'", (err as Error).message);
       return null;
     }
+  };
+
+  //AMOUNT
+  const validateAmount = (currentUserToken: UserTokenData, amount: number) => {
+    const formattedAmount = parseFixed(
+      amount.toString(),
+      currentUserToken.decimals
+    );
+
+    setIsValidDepositAmount(
+      formattedAmount.lte(currentUserToken.userBalance) && amount > 0
+    );
+
+    const claim = userClaims.find(
+      (claim) =>
+        claim.token.address.toLowerCase() ===
+        (currentUserToken.tokenInfo.tokenType === TokenType.Native
+          ? currentUserToken.address.toLowerCase()
+          : currentUserToken.tokenInfo.sourceToken.toLowerCase())
+    );
+
+    // console.log("input", amount);
+    setIsValidReleaseAmount(
+      (!claim?.isClaimed &&
+        claim?.amount.gte(
+          parseFixed(amount.toString(), currentUserToken.decimals)
+        ) &&
+        amount > 0) ??
+        false
+    );
   };
 
   // DEPOSITS
@@ -350,10 +434,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
       );
     }
   };
-  const getDepositedAmount = async (
-    tokenAddress: Address,
-    chainId?: number
-  ) => {
+  const getDepositedAmount = async (tokenAddress: string, chainId?: number) => {
     const data = await readContract({
       address: deployment[chainId || (currentChain?.id as number)].erc20safe,
       abi: ERC20Safe.abi,
@@ -417,14 +498,14 @@ function BridgeView({ configuredChains }: BridgeProps) {
 
     fetchingClaims.off();
   };
-  const updateClaim = async (
+  const updateClaimAfterDeposit = async (
     owner: string,
     tokenAddress: string,
     amount: string
   ) => {
     try {
       if (owner === account.address) {
-        console.log("updating claim...");
+        console.log("updating claim after deposit...");
         console.log("claims before updating", userClaims);
         let claims: ClaimStruct[] = [];
 
@@ -437,9 +518,12 @@ function BridgeView({ configuredChains }: BridgeProps) {
           claimIndex !== -1
             ? userClaims.map((claim, index) => {
                 if (claimIndex === index) {
-                  claim.isClaimed
-                    ? (claim.amount = BigNumber.from(amount))
-                    : (claim.amount = claim.amount.add(amount));
+                  if (claim.isClaimed) {
+                    claim.amount = BigNumber.from(amount);
+                    claim.isClaimed = false;
+                  } else {
+                    claim.amount = claim.amount.add(amount);
+                  }
                 }
                 return claim;
               })
@@ -459,6 +543,139 @@ function BridgeView({ configuredChains }: BridgeProps) {
                   isClaimed: false,
                 },
               ];
+
+        console.log("claims", claims);
+        setClaims(claims);
+      }
+    } catch (err) {
+      console.log("Error 'updateToken'", (err as Error).message);
+    }
+  };
+  const updateClaimAfterRelease = async (
+    owner: string,
+    tokenAddress: string,
+    amount: string
+  ) => {
+    try {
+      if (owner === account.address) {
+        console.log("updating claim after release...");
+        console.log("claims before updating", userClaims);
+        let claims: ClaimStruct[] = userClaims;
+
+        const claimIndex = userClaims.findIndex(
+          (claim) =>
+            claim.token.address.toLowerCase() === tokenAddress.toLowerCase()
+        );
+
+        if (claimIndex !== -1) {
+          claims = await Promise.all(
+            userClaims
+              .map(async (claim, index) => {
+                if (claimIndex === index && !claim.isClaimed) {
+                  const expectedAmount = claim.amount.sub(amount);
+                  const depositedAmount = await getDepositedAmount(
+                    claim.token.address
+                  );
+
+                  if (expectedAmount.isZero() && depositedAmount.isZero())
+                    claim.amount = expectedAmount;
+
+                  if (!expectedAmount.isZero() && !depositedAmount.isZero()) {
+                    claim.amount = expectedAmount;
+                  }
+
+                  if (expectedAmount.isZero() && !depositedAmount.isZero()) {
+                    claim.amount = depositedAmount;
+                    claim.isClaimed = true;
+                  }
+                }
+                return claim;
+              })
+              .filter(async (claim) => !(await claim).amount.isZero())
+          );
+        }
+
+        console.log("claims", claims);
+        setClaims(claims);
+      }
+    } catch (err) {
+      console.log("Error 'updateToken'", (err as Error).message);
+    }
+  };
+  const updateClaimAfterBurn = async (
+    owner: string,
+    tokenAddress: string,
+    amount: string
+  ) => {
+    try {
+      if (owner === account.address) {
+        console.log("updating claim after burn...");
+        console.log("claims before updating", userClaims);
+        let claims: ClaimStruct[] = userClaims;
+
+        const claimIndex = userClaims.findIndex(
+          (claim) =>
+            claim.token.address.toLowerCase() === tokenAddress.toLowerCase()
+        );
+
+        if (claimIndex !== -1) {
+          claims = userClaims.map((claim, index) => {
+            if (claimIndex === index) {
+              if (claim.isClaimed) {
+                claim.amount = BigNumber.from(amount);
+                claim.isClaimed = false;
+              } else {
+                claim.amount = claim.amount.add(amount);
+              }
+            }
+            return claim;
+          });
+        }
+
+        console.log("claims", claims);
+        setClaims(claims);
+      }
+    } catch (err) {
+      console.log("Error 'updateToken'", (err as Error).message);
+    }
+  };
+  const updateClaimAfterClaim = async (
+    owner: string,
+    sourceTokenAddress: string,
+    amount: string
+  ) => {
+    try {
+      if (owner === account.address) {
+        console.log("updating claim after claim...");
+        console.log("claims before updating", userClaims);
+        let claims: ClaimStruct[] = userClaims;
+
+        const claimIndex = userClaims.findIndex(
+          (claim) =>
+            claim.token.address.toLowerCase() ===
+            sourceTokenAddress.toLowerCase()
+        );
+
+        if (claimIndex !== -1) {
+          claims = await Promise.all(
+            userClaims
+              .map(async (claim, index) => {
+                if (claimIndex === index) {
+                  claim.isClaimed = true;
+
+                  const depositedAmount = await getDepositedAmount(
+                    claim.token.address,
+                    configuredChains.find((ch) => ch.id !== currentChain?.id)
+                      ?.id as number
+                  );
+
+                  claim.amount = depositedAmount;
+                }
+                return claim;
+              })
+              .filter(async (claim) => !(await claim).amount.isZero())
+          );
+        }
 
         console.log("claims", claims);
         setClaims(claims);
@@ -577,6 +794,14 @@ function BridgeView({ configuredChains }: BridgeProps) {
                 alchemy={alchemy}
                 availableChains={availableChains}
                 currentUserAddress={account.address as Address}
+                currentUserToken={currentUserToken}
+                setCurrentUserToken={setCurrentUserToken}
+                amount={amount}
+                isValidDepositAmount={isValidDepositAmount}
+                setIsValidDepositAmount={setIsValidDepositAmount}
+                isValidReleaseAmount={isValidReleaseAmount}
+                setIsValidReleaseAmount={setIsValidReleaseAmount}
+                setAmount={setAmount}
                 userTokens={userTokens}
                 userDeposits={userDeposits}
                 depositsAreFetching={depositsAreFetching}
@@ -585,6 +810,8 @@ function BridgeView({ configuredChains }: BridgeProps) {
                 getUserTokens={fetchUserTokens}
                 userClaims={userClaims}
                 handleChainSelect={handleChainSelect}
+                updateCurrentUserToken={updateCurrentUserToken}
+                validateAmount={validateAmount}
               />
             </TabPanel>
             <TabPanel>

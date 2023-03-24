@@ -1,6 +1,7 @@
 import {
   Accordion,
   AccordionButton,
+  AccordionIcon,
   AccordionItem,
   AccordionPanel,
   Container,
@@ -20,7 +21,7 @@ import {
   writeContract,
 } from "@wagmi/core";
 import { BigNumber, constants, utils } from "ethers";
-import { BaseSyntheticEvent, useState } from "react";
+import { BaseSyntheticEvent, useEffect, useState } from "react";
 import { Address, erc20ABI } from "wagmi";
 import Bridge from "../abi/Bridge.json";
 import BurnButton from "../components/Buttons/BurnButton";
@@ -49,10 +50,20 @@ type DepositProps = {
   currentChainId: number;
   availableChains: Chain[];
   currentUserAddress: Address;
+  currentUserToken: UserTokenData | undefined;
+  isValidDepositAmount: boolean;
+  isValidReleaseAmount: boolean;
+  amount: string;
   userTokens: UserTokenData[];
   userDeposits: DepositStruct[];
   depositsAreFetching: boolean;
   userClaims: ClaimStruct[];
+  setCurrentUserToken: React.Dispatch<
+    React.SetStateAction<UserTokenData | undefined>
+  >;
+  setIsValidDepositAmount: React.Dispatch<React.SetStateAction<boolean>>;
+  setIsValidReleaseAmount: React.Dispatch<React.SetStateAction<boolean>>;
+  setAmount: React.Dispatch<React.SetStateAction<string>>;
   handleChainSelect: (e: BaseSyntheticEvent) => void;
   getUserTokens: () => Promise<void>;
   getTokenData: (tokenAddress: Address) => Promise<TokenData | null>;
@@ -60,6 +71,12 @@ type DepositProps = {
     tokenAddress: Address,
     chainId?: number
   ) => Promise<BigNumber>;
+  updateCurrentUserToken: (tokenAddress: string) => Promise<{
+    isSuccess: boolean;
+    errorMsg: string;
+    validationObj: UserTokenData;
+  }>;
+  validateAmount: (currentUserToken: UserTokenData, amount: number) => void;
 };
 const DepositView = ({
   alchemy,
@@ -70,17 +87,19 @@ const DepositView = ({
   userDeposits,
   depositsAreFetching,
   userClaims,
+  currentUserToken,
+  setCurrentUserToken,
+  amount,
+  setAmount,
+  isValidDepositAmount,
+  setIsValidDepositAmount,
+  isValidReleaseAmount,
+  setIsValidReleaseAmount,
   handleChainSelect,
   getTokenData,
+  updateCurrentUserToken,
+  validateAmount,
 }: DepositProps) => {
-  const [currentUserToken, setCurrentUserToken] = useState<UserTokenData>();
-  const [amount, setAmount] = useState<string>("0");
-
-  const [isValidDepositAmount, setIsValidDepositAmount] =
-    useState<boolean>(false);
-  const [isValidReleaseAmount, setIsValidReleaseAmount] =
-    useState<boolean>(false);
-
   const [tokenApproved, tokenApproval] = useBoolean();
   const [tokenDeposited, tokenDeposit] = useBoolean();
   const [tokenReleased, tokenRelease] = useBoolean();
@@ -164,28 +183,6 @@ const DepositView = ({
     }
     return { isSuccess: false, errorMsg: "INVALID ADDRESS" };
   };
-  const updateCurrentUserToken = async (tokenAddress: string) => {
-    const userBalance = (
-      await alchemy
-        .forNetwork(networksDictionary[currentChainId])
-        .core.getTokenBalances(currentUserAddress, [tokenAddress])
-    ).tokenBalances[0].tokenBalance;
-
-    const userToken = {
-      ...currentUserToken,
-    } as UserTokenData;
-    userToken.userBalance = userBalance as string;
-
-    validateAmount(userToken, Number.parseFloat(amount));
-
-    setCurrentUserToken(userToken);
-
-    return {
-      isSuccess: true,
-      errorMsg: "",
-      validationObj: userToken as UserTokenData,
-    };
-  };
 
   // TOKENS AMOUNT
   const handleAmountInput = (amount: string) => {
@@ -210,35 +207,6 @@ const DepositView = ({
       setIsValidDepositAmount(false);
     }
   };
-  const validateAmount = (currentUserToken: UserTokenData, amount: number) => {
-    const formattedAmount = parseFixed(
-      amount.toString(),
-      currentUserToken.decimals
-    );
-
-    setIsValidDepositAmount(
-      formattedAmount.lte(currentUserToken.userBalance) && amount > 0
-    );
-
-    const claim = userClaims.find(
-      (claim) =>
-        claim.token.address.toLowerCase() ===
-        (currentUserToken.tokenInfo.tokenType === TokenType.Native
-          ? currentUserToken.address.toLowerCase()
-          : currentUserToken.tokenInfo.sourceToken.toLowerCase())
-    );
-
-    // console.log("input", amount);
-    setIsValidReleaseAmount(
-      (!claim?.isClaimed &&
-        claim?.amount.gte(
-          parseFixed(amount.toString(), currentUserToken.decimals)
-        ) &&
-        amount > 0) ??
-        false
-    );
-  };
-
   // MODAL
   const handleCloseModal = () => {
     setApprovalTx({ hash: "", err: "" });
@@ -488,12 +456,13 @@ const DepositView = ({
                 justifyContent="center"
                 fontStyle="normal"
                 fontWeight="semibold"
-                bgColor="teal.900"
+                bgColor="teal.600"
               >
-                DEPOSITED TOKENS
+                <Text>SHOW DEPOSITED TOKENS</Text>
+                <AccordionIcon ml="2" />
               </AccordionButton>
             </h2>
-            <AccordionPanel pb={4}>
+            <AccordionPanel pb={4} bgColor="gray.600">
               <Flex direction="column">
                 <Divider my="4" />
                 <Flex direction="row" justifyContent="space-between">

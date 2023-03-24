@@ -79,7 +79,7 @@ const LockReleaseButton = ({
           }}
           isDisabled={!isValidReleaseAmount}
         >
-          Release
+          Release Deposited Tokens
         </Button>
       </Stack>
       <Modal
