@@ -1,10 +1,8 @@
-import { formatFixed, parseFixed } from "@ethersproject/bignumber";
 import {
   Accordion,
   AccordionButton,
   AccordionItem,
   AccordionPanel,
-  Button,
   Container,
   Divider,
   Flex,
@@ -13,93 +11,75 @@ import {
   Text,
   useBoolean,
 } from "@chakra-ui/react";
+import { formatFixed, parseFixed } from "@ethersproject/bignumber";
 import {
   Chain,
-  fetchToken,
-  FetchTokenResult,
+  getNetwork as network,
   prepareWriteContract,
   readContract,
   writeContract,
-  getNetwork as network,
 } from "@wagmi/core";
-import { BigNumber, constants, EventFilter, utils, providers } from "ethers";
-import { isAddress, parseEther } from "ethers/lib/utils.js";
-import { BaseSyntheticEvent, useEffect, useState } from "react";
-import {
-  configureChains,
-  erc20ABI,
-  useAccount,
-  useNetwork,
-  useContract,
-  useContractEvent,
-  Address,
-} from "wagmi";
-import { goerli, hardhat, polygonMumbai } from "wagmi/chains";
-import { publicProvider } from "wagmi/providers/public";
+import { BigNumber, constants, utils } from "ethers";
+import { BaseSyntheticEvent, useState } from "react";
+import { Address, erc20ABI } from "wagmi";
 import Bridge from "../abi/Bridge.json";
-import ERC20Safe from "../abi/ERC20Safe.json";
-import DepositReleaseButton from "../components/Buttons/DepositReleaseButton";
 import BurnButton from "../components/Buttons/BurnButton";
+import DepositReleaseButton from "../components/Buttons/DepositReleaseButton";
 import AmountCard from "../components/Cards/AmountCard";
 import BridgeCard from "../components/Cards/BridgeCard";
 import TokenCard from "../components/Cards/TokenCard";
+import { AlchemyMultichainClient } from "../utils/alchemy/alchemy-multichain-client";
+import { deployment, TokenType } from "../utils/consts&enums";
+import { networksDictionary } from "../utils/networksDict";
+import type {
+  ClaimStruct,
+  DepositStruct,
+  TokenData,
+  TxStruct,
+  UserTokenData,
+  ValidationResult,
+} from "../utils/types";
 import {
-  setValidator,
   createReleaseRequest,
   signWithdrawalRequest,
 } from "../utils/validator";
-import { Alchemy, Network } from "alchemy-sdk";
-import { AlchemyMultichainClient } from "../utils/alchemy/alchemy-multichain-client";
-import type {
-  UserTokenData,
-  ValidationResult,
-  TokenData,
-  DepositStruct,
-  TxStruct,
-  ClaimStruct,
-} from "../utils/types";
-import networks from "../utils/networksDict";
-import { addresses, TokenType } from "../utils/consts&enums";
-import { classicNameResolver } from "typescript";
 
 type DepositProps = {
   alchemy: AlchemyMultichainClient;
+  currentChainId: number;
   availableChains: Chain[];
   currentUserAddress: Address;
   userTokens: UserTokenData[];
   userDeposits: DepositStruct[];
   depositsAreFetching: boolean;
-  getTokenData: (tokenAddress: Address) => Promise<TokenData>;
-  getUserTokens: () => Promise<void>;
   userClaims: ClaimStruct[];
+  handleChainSelect: (e: BaseSyntheticEvent) => void;
+  getUserTokens: () => Promise<void>;
+  getTokenData: (tokenAddress: Address) => Promise<TokenData | null>;
   getDepositedAmount: (
     tokenAddress: Address,
     chainId?: number
   ) => Promise<BigNumber>;
-  handleChainSelect: (e: BaseSyntheticEvent) => void;
 };
 const DepositView = ({
   alchemy,
+  currentChainId,
   availableChains,
   currentUserAddress,
   userTokens,
   userDeposits,
   depositsAreFetching,
-  getTokenData,
-  getDepositedAmount,
-  getUserTokens,
   userClaims,
   handleChainSelect,
+  getTokenData,
 }: DepositProps) => {
-  const currentChainId = network().chain?.id as number;
-
   const [currentUserToken, setCurrentUserToken] = useState<UserTokenData>();
   const [amount, setAmount] = useState<string>("0");
+
   const [isValidDepositAmount, setIsValidDepositAmount] =
     useState<boolean>(false);
   const [isValidReleaseAmount, setIsValidReleaseAmount] =
     useState<boolean>(false);
-  const [isUserTokenClaimed, setIsUserTokenClaimed] = useState<boolean>(false);
 
   const [tokenApproved, tokenApproval] = useBoolean();
   const [tokenDeposited, tokenDeposit] = useBoolean();
@@ -148,15 +128,17 @@ const DepositView = ({
     if (utils.isAddress(val)) {
       if (
         (await alchemy
-          .forNetwork(networks[network().chain?.id as number])
+          .forNetwork(networksDictionary[network().chain?.id as number])
           .core.getCode(val)) !== "0x"
       ) {
         try {
           const token = await getTokenData(val as Address);
 
+          if (!token) throw new Error();
+
           const userBalance = (
             await alchemy
-              .forNetwork(networks[currentChainId])
+              .forNetwork(networksDictionary[currentChainId])
               .core.getTokenBalances(currentUserAddress, [token.address])
           ).tokenBalances[0].tokenBalance;
 
@@ -185,7 +167,7 @@ const DepositView = ({
   const updateCurrentUserToken = async (tokenAddress: string) => {
     const userBalance = (
       await alchemy
-        .forNetwork(networks[currentChainId])
+        .forNetwork(networksDictionary[currentChainId])
         .core.getTokenBalances(currentUserAddress, [tokenAddress])
     ).tokenBalances[0].tokenBalance;
 
@@ -208,6 +190,14 @@ const DepositView = ({
   // TOKENS AMOUNT
   const handleAmountInput = (amount: string) => {
     setAmount(amount);
+    try {
+      validateAmount(
+        currentUserToken as UserTokenData,
+        Number.parseFloat(amount)
+      );
+    } catch (err) {
+      console.log("handleAmountInput", (err as Error).message);
+    }
   };
   const handleAmountBlur = (e: BaseSyntheticEvent) => {
     try {
@@ -237,7 +227,7 @@ const DepositView = ({
           ? currentUserToken.address.toLowerCase()
           : currentUserToken.tokenInfo.sourceToken.toLowerCase())
     );
-    // console.log("claim", formatFixed(claim?.amount as BigNumber, 18));
+
     // console.log("input", amount);
     setIsValidReleaseAmount(
       (!claim?.isClaimed &&
@@ -258,6 +248,13 @@ const DepositView = ({
     depositProcess.off();
     releaseProcess.off();
     burnProcess.off();
+
+    try {
+      validateAmount(
+        currentUserToken as UserTokenData,
+        Number.parseFloat(amount)
+      );
+    } catch {}
   };
 
   const getApproval = async () => {
@@ -267,7 +264,7 @@ const DepositView = ({
           (currentUserToken?.address as Address) ?? constants.AddressZero,
         abi: erc20ABI,
         functionName: "allowance",
-        args: [currentUserAddress, addresses[currentChainId].erc20safe],
+        args: [currentUserAddress, deployment[currentChainId].erc20safe],
       });
 
       return approval as BigNumber;
@@ -276,7 +273,6 @@ const DepositView = ({
       throw new Error();
     }
   };
-
   const approve = async () => {
     try {
       const config = await prepareWriteContract({
@@ -284,7 +280,7 @@ const DepositView = ({
           (currentUserToken?.address as Address) ?? constants.AddressZero,
         abi: erc20ABI,
         functionName: "approve",
-        args: [addresses[currentChainId].erc20safe, constants.MaxUint256],
+        args: [deployment[currentChainId].erc20safe, constants.MaxUint256],
       });
       const tx = await writeContract(config);
       setApprovalTx({ hash: tx.hash, err: "" });
@@ -294,10 +290,11 @@ const DepositView = ({
       throw new Error();
     }
   };
+
   const deposit = async () => {
     try {
       const config = await prepareWriteContract({
-        address: addresses[currentChainId].bridge,
+        address: deployment[currentChainId].bridge,
         abi: Bridge.abi,
         functionName: "deposit",
         args: [
@@ -315,31 +312,10 @@ const DepositView = ({
       throw new Error();
     }
   };
-  const burn = async () => {
-    try {
-      const config = await prepareWriteContract({
-        address: addresses[currentChainId].bridge,
-        abi: Bridge.abi,
-        functionName: "burn",
-        args: [
-          currentUserToken?.address,
-          parseFixed(amount, currentUserToken?.decimals),
-        ],
-      });
-
-      const tx = await writeContract(config);
-      setBurnTx({ hash: tx.hash, err: "" });
-
-      const reciept = await tx.wait();
-    } catch (e) {
-      setBurnTx({ hash: "", err: (e as Error).message });
-      throw new Error();
-    }
-  };
   const release = async (signature: string) => {
     try {
       const config = await prepareWriteContract({
-        address: addresses[currentChainId].bridge,
+        address: deployment[currentChainId].bridge,
         abi: Bridge.abi,
         functionName: "release",
         args: [
@@ -358,6 +334,28 @@ const DepositView = ({
     }
   };
 
+  const burn = async () => {
+    try {
+      const config = await prepareWriteContract({
+        address: deployment[currentChainId].bridge,
+        abi: Bridge.abi,
+        functionName: "burn",
+        args: [
+          currentUserToken?.address,
+          parseFixed(amount, currentUserToken?.decimals),
+        ],
+      });
+
+      const tx = await writeContract(config);
+      setBurnTx({ hash: tx.hash, err: "" });
+
+      const reciept = await tx.wait();
+    } catch (e) {
+      setBurnTx({ hash: "", err: (e as Error).message });
+      throw new Error();
+    }
+  };
+
   const handleDepositClick = async () => {
     try {
       depositProcess.on();
@@ -366,10 +364,7 @@ const DepositView = ({
       tokenDeposit.off();
 
       const approval = await getApproval();
-      console.log(
-        "approval",
-        formatFixed(approval, currentUserToken?.decimals)
-      );
+
       if (approval?.lt(parseFixed(amount, currentUserToken?.decimals))) {
         await approve();
       }
@@ -392,10 +387,7 @@ const DepositView = ({
       tokenBurn.off();
 
       const approval = await getApproval();
-      console.log(
-        "approval",
-        formatFixed(approval, currentUserToken?.decimals)
-      );
+
       if (approval?.lt(parseFixed(amount, currentUserToken?.decimals))) {
         await approve();
       }

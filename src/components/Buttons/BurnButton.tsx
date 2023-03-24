@@ -78,7 +78,7 @@ const BurnButton = ({
         <ModalOverlay />
         <ModalContent>
           <ModalHeader textAlign="center">Burning</ModalHeader>
-          <ModalCloseButton />
+          {(approvalTx.err || burnTx.err || tokenBurnt) && <ModalCloseButton />}
           <ModalBody>
             {inBurn && (
               <>

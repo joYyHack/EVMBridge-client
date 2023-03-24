@@ -6,7 +6,7 @@ import { TokenType } from "./consts&enums";
 import { privKey } from "./encoding";
 import { Address } from "wagmi";
 import { fetchToken, getNetwork } from "@wagmi/core";
-import { addresses } from "./consts&enums";
+import { deployment } from "./consts&enums";
 
 let validatorWalletAddress: Address;
 let validatorContractAddress: Address;
@@ -55,7 +55,7 @@ export const setValidator = async (newProvider: providers.Provider) => {
   signer = new Wallet(privKey("dead"), provider);
   validatorWalletAddress = signer.address as Address;
   const chainId = (await provider.getNetwork()).chainId;
-  const addrs = addresses[chainId];
+  const addrs = deployment[chainId];
 
   validatorContractAddress = addrs.validator;
   bridgeAddress = addrs.bridge;
@@ -63,7 +63,6 @@ export const setValidator = async (newProvider: providers.Provider) => {
 
   domain.chainId = chainId;
   domain.verifyingContract = addrs.validator;
-  console.log("domain", domain);
 };
 
 const getNonce = async (from: Address) =>

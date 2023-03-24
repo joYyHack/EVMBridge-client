@@ -1,61 +1,56 @@
+import { CheckIcon, CloseIcon } from "@chakra-ui/icons";
 import {
-  Stack,
   Button,
-  ButtonGroup,
-  useDisclosure,
-  Text,
-  Heading,
+  Card,
+  CardBody,
   Flex,
-  Icon,
-  Spinner,
+  Heading,
   Link,
-} from "@chakra-ui/react";
-import {
   Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
   ModalBody,
   ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
+  Spinner,
+  Stack,
+  Text,
+  useDisclosure,
 } from "@chakra-ui/react";
-import { BaseSyntheticEvent } from "react";
-import { Card, CardHeader, CardBody, CardFooter } from "@chakra-ui/react";
-import { CheckIcon, CloseIcon } from "@chakra-ui/icons";
-import { Chain } from "wagmi";
-import type { TxStruct } from "../../utils/types";
 import { getNetwork } from "@wagmi/core";
+import type { TxStruct } from "../../utils/types";
 
 type DepositReleaseButtonProps = {
   tokenApproved: boolean;
   tokenDeposited: boolean;
   tokenReleased: boolean;
-  deposit: () => Promise<void>;
-  release: () => Promise<void>;
   approvalTx: TxStruct;
   depositTx: TxStruct;
   releaseTx: TxStruct;
   inDeposit: boolean;
   inRelease: boolean;
-  handleCloseModal: () => void;
   isValidDepositAmount: boolean;
   isValidReleaseAmount: boolean;
+  deposit: () => Promise<void>;
+  release: () => Promise<void>;
+  handleCloseModal: () => void;
 };
 
 const LockReleaseButton = ({
   tokenApproved,
   tokenDeposited,
   tokenReleased,
-  deposit,
-  release,
   approvalTx,
   depositTx,
   releaseTx,
   inDeposit,
   inRelease,
-  handleCloseModal,
   isValidDepositAmount,
   isValidReleaseAmount,
+  deposit,
+  release,
+  handleCloseModal,
 }: DepositReleaseButtonProps) => {
   const currentChain = getNetwork().chain;
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -103,10 +98,13 @@ const LockReleaseButton = ({
             {inDeposit && "Depositing"}
             {inRelease && "Releasing"}
           </ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            {inDeposit && (
-              <>
+
+          {inDeposit && (
+            <>
+              {(depositTx.err || approvalTx.err || tokenDeposited) && (
+                <ModalCloseButton />
+              )}
+              <ModalBody>
                 <Card mb="3">
                   <CardBody>
                     <Flex justifyContent="space-between" alignItems="center">
@@ -166,10 +164,13 @@ const LockReleaseButton = ({
                     )}
                   </CardBody>
                 </Card>
-              </>
-            )}
-            {inRelease && (
-              <>
+              </ModalBody>
+            </>
+          )}
+          {inRelease && (
+            <>
+              {(releaseTx.err || tokenReleased) && <ModalCloseButton />}
+              <ModalBody>
                 <Card mb="3">
                   <CardBody>
                     <Flex justifyContent="space-between" alignItems="center">
@@ -199,9 +200,9 @@ const LockReleaseButton = ({
                     )}
                   </CardBody>
                 </Card>
-              </>
-            )}
-          </ModalBody>
+              </ModalBody>
+            </>
+          )}
 
           <ModalFooter></ModalFooter>
         </ModalContent>
