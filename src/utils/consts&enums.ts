@@ -1,4 +1,3 @@
-import { Network } from "alchemy-sdk";
 import { Address } from "wagmi";
 
 export enum TokenType {
@@ -6,17 +5,17 @@ export enum TokenType {
   Wrapped = 1,
 }
 
-interface IBridgeAddress {
+interface IDeploymentAddress {
   bridge: Address;
   erc20safe: Address;
   validator: Address;
 }
 
-interface IBridgeData {
-  [chainId: number]: IBridgeAddress;
+interface IDeployment {
+  [chainId: number]: IDeploymentAddress;
 }
 
-export const addresses: IBridgeData = {
+export const deployment: IDeployment = {
   11155111 /* sepolia */: {
     bridge: "0xC2894d489618B23dB236847BaaFeF1B2Ef3938Ae",
     erc20safe: "0xB1F3C795279756539E065963bD6E73bECE0B86D1",

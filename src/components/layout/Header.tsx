@@ -24,6 +24,7 @@ import {
   useAccount,
   useBalance,
   useNetwork,
+  Connector,
 } from "wagmi";
 import { MetaMaskConnector } from "wagmi/connectors/metaMask";
 import { goerli, polygonMumbai as mumbai } from "wagmi/chains";
@@ -46,18 +47,10 @@ const md5 = require("md5");
 //     {children}
 //   </Link>
 // );
-
-export default function Header() {
-  const { colorMode, toggleColorMode } = useColorMode();
-  const { isOpen, onOpen, onClose } = useDisclosure();
-
-  const connector = new MetaMaskConnector({
-    chains: [goerli, mumbai],
-    options: {
-      UNSTABLE_shimOnConnectSelectAccount: true,
-    },
-  });
-
+type HeaderProps = {
+  connector: Connector;
+};
+export default function Header({ connector }: HeaderProps) {
   const { isConnected, address } = useAccount();
   const { connect, isLoading } = useConnect({
     connector,
@@ -65,10 +58,6 @@ export default function Header() {
   const { disconnect } = useDisconnect();
 
   const { chain } = useNetwork();
-
-  const { data } = useBalance({
-    address,
-  });
 
   const handleConnectButtonClick = async () => {
     connect();

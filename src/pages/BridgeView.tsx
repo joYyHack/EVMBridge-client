@@ -1,108 +1,76 @@
 import {
-  Tabs,
-  TabList,
-  TabPanels,
   Tab,
+  TabList,
   TabPanel,
+  TabPanels,
+  Tabs,
   useBoolean,
-} from "@chakra-ui/react";
-import alchemy from "../utils/alchemy/alchemy";
-import ClaimView from "./ClaimView";
-import DepositView from "./DepositView";
-import {
-  Accordion,
-  AccordionButton,
-  AccordionItem,
-  AccordionPanel,
-  Container,
-  Divider,
-  Flex,
-  Heading,
-  Text,
 } from "@chakra-ui/react";
 import { formatFixed } from "@ethersproject/bignumber";
 import {
   Chain,
   fetchToken,
-  FetchTokenResult,
-  prepareWriteContract,
-  readContract,
-  writeContract,
-  ProviderWithFallbackConfig,
-  switchNetwork,
   getContract,
+  getProvider,
+  ProviderWithFallbackConfig,
+  readContract,
 } from "@wagmi/core";
 import { BigNumber, constants, EventFilter, providers } from "ethers";
-import { parseEther } from "ethers/lib/utils.js";
 import { BaseSyntheticEvent, useEffect, useState } from "react";
 import {
-  configureChains,
-  erc20ABI,
+  Address,
   useAccount,
-  useNetwork,
   useContract,
   useContractEvent,
-  Address,
+  useNetwork,
+  useProvider,
   useSwitchNetwork,
+  useClient,
 } from "wagmi";
-import { goerli, hardhat, polygonMumbai, sepolia } from "wagmi/chains";
-import { publicProvider } from "wagmi/providers/public";
 import Bridge from "../abi/Bridge.json";
 import ERC20Safe from "../abi/ERC20Safe.json";
-import DepositReleaseButton from "../components/Buttons/DepositReleaseButton";
-import AmountCard from "../components/Cards/AmountCard";
-import BridgeCard from "../components/Cards/BridgeCard";
-import TokenCard from "../components/Cards/TokenCard";
-import {
-  setValidator,
-  createReleaseRequest,
-  signWithdrawalRequest,
-} from "../utils/validator";
-import { Alchemy, Network, AssetTransfersCategory } from "alchemy-sdk";
-import { alchemyProvider } from "wagmi/providers/alchemy";
-import networks from "../utils/networksDict";
-import { addresses, TokenType } from "../utils/consts&enums";
+import alchemy from "../utils/alchemy/alchemy";
+import { deployment, TokenType } from "../utils/consts&enums";
+import { networksDictionary } from "../utils/networksDict";
 import type {
-  TokenData,
-  UserTokenData,
-  DepositStruct,
   ClaimStruct,
+  DepositStruct,
+  TokenData,
   TokenInfo,
+  UserTokenData,
 } from "../utils/types";
-
+import { setValidator } from "../utils/validator";
+import ClaimView from "./ClaimView";
+import DepositView from "./DepositView";
+import { parseFixed } from "@ethersproject/bignumber";
 type BridgeProps = {
-  provider: ({ chainId }: { chainId?: number | undefined }) => (
-    | providers.FallbackProvider
-    | ProviderWithFallbackConfig<providers.StaticJsonRpcProvider>
-  ) & {
-    chains: Chain[];
-  };
-  chains: Chain[];
+  configuredChains: Chain[];
 };
-function BridgeView({ provider, chains }: BridgeProps) {
+function BridgeView({ configuredChains }: BridgeProps) {
+  const provider = useProvider();
   const account = useAccount();
+
   const { chain: currentChain } = useNetwork();
-  const {
-    error,
-    isLoading: isNetworkSwitching,
-    switchNetwork,
-  } = useSwitchNetwork();
+  const networkSwitcher = useSwitchNetwork();
+
   const bridgeContract = useContract({
-    address:
-      addresses[currentChain?.id as number]?.bridge ?? constants.AddressZero,
+    address: deployment[currentChain?.id as number].bridge,
     abi: Bridge.abi,
-    signerOrProvider: provider({ chainId: currentChain?.id }),
+    signerOrProvider: provider,
   });
-  const erc20SafeContract = useContract({
-    address:
-      addresses[currentChain?.id as number]?.erc20safe ?? constants.AddressZero,
-    abi: ERC20Safe.abi,
-    signerOrProvider: provider({ chainId: currentChain?.id }),
-  });
+
   const [availableChains, setAvailableChains] = useState<Chain[]>(
-    chains.filter((ch) => ch.id !== currentChain?.id)
+    configuredChains.filter((ch) => ch.id !== currentChain?.id)
   );
   const [targetChain, setTargetChain] = useState<Chain>(availableChains[0]);
+
+  const [currentUserToken, setCurrentUserToken] = useState<UserTokenData>();
+  const [amount, setAmount] = useState<string>("0");
+  const [isValidDepositAmount, setIsValidDepositAmount] =
+    useState<boolean>(false);
+  const [isValidReleaseAmount, setIsValidReleaseAmount] =
+    useState<boolean>(false);
+
   const [userTokens, setUserTokens] = useState<UserTokenData[]>([]);
   const [userDeposits, setDeposits] = useState<DepositStruct[]>([]);
   const [userClaims, setClaims] = useState<ClaimStruct[]>([]);
@@ -111,75 +79,280 @@ function BridgeView({ provider, chains }: BridgeProps) {
   const [claimsAreFetching, fetchingClaims] = useBoolean();
 
   useEffect(() => {
-    fetchClaims();
-  }, [currentChain?.id, userDeposits]);
-  useEffect(() => {
+    setCurrentUserToken(undefined);
+    setIsValidDepositAmount(false);
+    setIsValidReleaseAmount(false);
+
+    fetchUserTokens();
     fetchDepositedTokens();
-  }, [currentChain?.id]);
-  useEffect(() => {
-    async function initValidator() {
-      await setValidator(provider({ chainId: currentChain?.id }));
-    }
-    initValidator();
-  }, [currentChain?.id]);
-  useEffect(() => {
-    getUserTokens();
-  }, [account.address, currentChain?.id]);
+    fetchClaims();
+  }, [account.address, currentChain]);
   useEffect(() => {
     function trackAvailableChains() {
-      let updatedChains: Chain[] = [];
+      let updatedAvailableChains: Chain[] = [];
       currentChain &&
-        (updatedChains = chains.filter((ch) => ch.id !== currentChain?.id));
+        (updatedAvailableChains = configuredChains.filter(
+          (ch) => ch.id !== currentChain.id
+        ));
 
-      setAvailableChains(updatedChains);
-      setTargetChain(updatedChains[0]);
+      setAvailableChains(updatedAvailableChains);
+      setTargetChain(updatedAvailableChains[0]);
     }
     trackAvailableChains();
-  }, [currentChain?.id]);
+  }, [currentChain]);
+  useEffect(() => {
+    async function initValidator() {
+      await setValidator(provider);
+    }
+    initValidator();
+  }, [currentChain]);
 
   useContractEvent({
-    address: addresses[currentChain?.id as number].bridge,
+    address: deployment[currentChain?.id as number].bridge,
     abi: Bridge.abi,
     eventName: "Deposit",
-    async listener(depositer, tokenAddress, _) {
-      await updateDeposits(depositer as Address, tokenAddress as Address);
+    async listener(_depositer, _tokenAddress, _amount) {
+      const depositer = _depositer as string;
+      const tokenAddress = _tokenAddress as string;
+      const amount = _amount as string;
+
+      await updateToken(depositer, tokenAddress);
+      await updateDeposit(depositer, tokenAddress);
+      await updateClaimAfterDeposit(depositer, tokenAddress, amount);
     },
   });
   useContractEvent({
-    address: addresses[currentChain?.id as number].bridge,
+    address: deployment[currentChain?.id as number].bridge,
     abi: Bridge.abi,
     eventName: "Release",
-    async listener(releaser, tokenAddress, _) {
-      await updateDeposits(releaser as Address, tokenAddress as Address);
+    async listener(_releaser, _tokenAddress, _amount) {
+      const releaser = _releaser as string;
+      const tokenAddress = _tokenAddress as string;
+      const amount = _amount as string;
+
+      await updateToken(releaser, tokenAddress);
+      await updateDeposit(releaser, tokenAddress);
+      await updateClaimAfterRelease(releaser, tokenAddress, amount);
     },
   });
   useContractEvent({
-    address: addresses[targetChain?.id as number].bridge,
+    address: deployment[targetChain?.id as number].bridge,
     abi: Bridge.abi,
     eventName: "Burn",
-    async listener(burner, wrappedToken, sourceToken, amount) {
-      console.log("wrapped token", wrappedToken);
+    async listener(_burner, _wrappedToken, _sourceToken, _amount) {
+      const burner = _burner as string;
+      const wrappedToken = _wrappedToken as string;
+      const sourceToken = _sourceToken as string;
+      const amount = _amount as string;
+
+      await updateToken(burner, wrappedToken);
+      await updateClaimAfterBurn(burner, sourceToken, amount);
     },
   });
   useContractEvent({
-    address: addresses[targetChain?.id as number].bridge,
+    address: deployment[targetChain?.id as number].bridge,
     abi: Bridge.abi,
     eventName: "Withdraw",
-    async listener(withdrawer, sourceToken, wrappedToken, amount) {
-      //console.log("wrapped token", wrappedToken);
+    async listener(_withdrawer, _sourceToken, _wrappedToken, _amount) {
+      setCurrentUserToken(undefined);
+      setIsValidDepositAmount(false);
+      setIsValidReleaseAmount(false);
+
+      const withdrawer = _withdrawer as string;
+      const sourceToken = _sourceToken as string;
+      const wrappedToken = _wrappedToken as string;
+      const amount = _amount as string;
+
+      await updateClaimAfterClaim(withdrawer, sourceToken, amount);
+      await updateToken(withdrawer, wrappedToken);
+      //
     },
   });
 
   const handleChainSelect = (e: BaseSyntheticEvent) => {
-    const selectedChain = chains.find(
+    const selectedChain = configuredChains.find(
       (chain) => chain.id == Number(e.target.value)
     ) as Chain;
     setTargetChain(selectedChain);
   };
   const handleNetworkSwitch = () => {
-    switchNetwork?.(targetChain.id);
+    networkSwitcher.switchNetwork?.(targetChain.id);
   };
 
+  // TOKENS
+  const fetchUserTokens = async () => {
+    try {
+      const tokens = await alchemy
+        .forNetwork(networksDictionary[currentChain?.id as number])
+        .core.getTokenBalances(account.address as string);
+
+      const userTokens: UserTokenData[] = [];
+      const nonZeroTokens = tokens.tokenBalances?.filter(
+        (token) => !BigNumber.from(token.tokenBalance).isZero()
+      );
+
+      for (const token of nonZeroTokens) {
+        const tokenData = await getTokenData(token.contractAddress as Address);
+
+        if (tokenData) {
+          const userToken = {
+            ...tokenData,
+            userBalance: token.tokenBalance,
+          } as UserTokenData;
+
+          userTokens.push(userToken);
+        }
+      }
+      userTokens.sort((tok1, tok2) => {
+        const balance1 = BigNumber.from(tok1.userBalance);
+        const balance2 = BigNumber.from(tok2.userBalance);
+
+        return balance1.gt(balance2) ? -1 : balance1.eq(balance2) ? 0 : 1;
+      });
+      setUserTokens(userTokens);
+    } catch (err) {
+      console.log("Error 'getUserTokens'", (err as Error).message);
+    }
+  };
+  const updateToken = async (owner: string, tokenAddress: string) => {
+    try {
+      if (owner === account.address) {
+        console.log("updating token...");
+        const tokens = await alchemy
+          .forNetwork(networksDictionary[currentChain?.id as number])
+          .core.getTokenBalances(owner, [tokenAddress]);
+        console.log("tokens", tokens);
+        const currentToken = tokens.tokenBalances[0];
+
+        const tokenIndex = userTokens.findIndex(
+          (tok) =>
+            tok.address.toLowerCase() ===
+            currentToken.contractAddress.toLowerCase()
+        );
+
+        let udpatedUserTokens: UserTokenData[] = [];
+
+        if (!BigNumber.from(currentToken.tokenBalance).isZero()) {
+          if (tokenIndex === -1) {
+            udpatedUserTokens = [...userTokens];
+            const tokenData = await getTokenData(currentToken.contractAddress);
+
+            if (tokenData) {
+              const userToken = {
+                ...tokenData,
+                userBalance: currentToken.tokenBalance,
+              } as UserTokenData;
+
+              udpatedUserTokens.push(userToken);
+            }
+          } else {
+            udpatedUserTokens = userTokens.map((token) => {
+              if (
+                token.address.toLowerCase() ===
+                currentToken.contractAddress.toLowerCase()
+              ) {
+                token.userBalance = currentToken.tokenBalance as string;
+              }
+              return token;
+            });
+          }
+        } else {
+          udpatedUserTokens = userTokens.filter(
+            (token) =>
+              token.address.toLowerCase() !==
+              currentToken.contractAddress.toLowerCase()
+          );
+        }
+
+        udpatedUserTokens.sort((tok1, tok2) => {
+          const balance1 = BigNumber.from(tok1.userBalance);
+          const balance2 = BigNumber.from(tok2.userBalance);
+
+          return balance1.gt(balance2) ? -1 : balance1.eq(balance2) ? 0 : 1;
+        });
+
+        console.log("udpatedUserTokens", udpatedUserTokens);
+        setUserTokens(udpatedUserTokens);
+      }
+    } catch (err) {
+      console.log("Error 'updateToken'", (err as Error).message);
+    }
+  };
+  const updateCurrentUserToken = async (tokenAddress: string) => {
+    const userBalance = (
+      await alchemy
+        .forNetwork(networksDictionary[currentChain?.id as number])
+        .core.getTokenBalances(account.address as string, [tokenAddress])
+    ).tokenBalances[0].tokenBalance;
+
+    const userToken = {
+      ...currentUserToken,
+    } as UserTokenData;
+    userToken.userBalance = userBalance as string;
+
+    validateAmount(userToken, Number.parseFloat(amount));
+
+    setCurrentUserToken(userToken);
+
+    return {
+      isSuccess: true,
+      errorMsg: "",
+      validationObj: userToken as UserTokenData,
+    };
+  };
+  const getTokenData = async (tokenAddress: string, chainId?: number) => {
+    try {
+      const token = await fetchToken({
+        address: tokenAddress as Address,
+        chainId: chainId || currentChain?.id,
+      });
+
+      const tokenInfo = (await readContract({
+        address: deployment[chainId || (currentChain?.id as number)].erc20safe,
+        abi: ERC20Safe.abi,
+        functionName: "getTokenInfo",
+        args: [tokenAddress],
+        chainId: chainId || currentChain?.id,
+      })) as TokenInfo;
+
+      return { ...token, tokenInfo } as TokenData;
+    } catch (err) {
+      console.log("Error 'getTokenData'", (err as Error).message);
+      return null;
+    }
+  };
+
+  //AMOUNT
+  const validateAmount = (currentUserToken: UserTokenData, amount: number) => {
+    const formattedAmount = parseFixed(
+      amount.toString(),
+      currentUserToken.decimals
+    );
+
+    setIsValidDepositAmount(
+      formattedAmount.lte(currentUserToken.userBalance) && amount > 0
+    );
+
+    const claim = userClaims.find(
+      (claim) =>
+        claim.token.address.toLowerCase() ===
+        (currentUserToken.tokenInfo.tokenType === TokenType.Native
+          ? currentUserToken.address.toLowerCase()
+          : currentUserToken.tokenInfo.sourceToken.toLowerCase())
+    );
+
+    // console.log("input", amount);
+    setIsValidReleaseAmount(
+      (!claim?.isClaimed &&
+        claim?.amount.gte(
+          parseFixed(amount.toString(), currentUserToken.decimals)
+        ) &&
+        amount > 0) ??
+        false
+    );
+  };
+
+  // DEPOSITS
   const fetchDepositedTokens = async () => {
     fetchingDeposits.on();
 
@@ -189,7 +362,7 @@ function BridgeView({ provider, chains }: BridgeProps) {
     let depositEvents = await bridgeContract?.queryFilter(depositFilter);
 
     const depositedTokenAddresses = depositEvents
-      ?.map((event) => event.args?.[1] ?? constants.AddressZero)
+      ?.map((event) => event.args?.token ?? constants.AddressZero)
       .filter(
         (address, index, self) =>
           self.indexOf(address) === index && address !== constants.AddressZero
@@ -200,7 +373,7 @@ function BridgeView({ provider, chains }: BridgeProps) {
       const depositedAmount = await getDepositedAmount(token);
       const tokenData = await getTokenData(token);
 
-      if (!BigNumber.from(depositedAmount).isZero()) {
+      if (!BigNumber.from(depositedAmount).isZero() && tokenData) {
         tokenDeposits.push({
           token: tokenData,
           amount: depositedAmount,
@@ -208,22 +381,81 @@ function BridgeView({ provider, chains }: BridgeProps) {
       }
     }
 
-    // tokenDeposits.sort((deposit, nextDeposit) =>
-    //   nextDeposit.amount.sub(deposit.amount).toNumber()
-    // );
+    tokenDeposits.sort((deposit, nextDeposit) =>
+      deposit.amount.gt(nextDeposit.amount)
+        ? -1
+        : deposit.amount.eq(nextDeposit.amount)
+        ? 0
+        : 1
+    );
     setDeposits(tokenDeposits);
 
     fetchingDeposits.off();
   };
+  const updateDeposit = async (owner: string, tokenAddress: string) => {
+    if (owner === account.address) {
+      console.log("updating deposit...");
+      const depositIndex = userDeposits.findIndex(
+        (deposit) =>
+          deposit.token.address.toLowerCase() === tokenAddress.toLowerCase()
+      );
+
+      const depositedAmount = await getDepositedAmount(tokenAddress as Address);
+      const tokenData = await getTokenData(tokenAddress as Address);
+
+      let updatedDeposits =
+        depositIndex === -1
+          ? [
+              ...userDeposits,
+              {
+                token: tokenData,
+                amount: depositedAmount,
+              } as DepositStruct,
+            ]
+          : userDeposits.map((deposit, index) => {
+              if (depositIndex === index) deposit.amount = depositedAmount;
+              return deposit;
+            });
+
+      updatedDeposits.sort((deposit, nextDeposit) =>
+        deposit.amount.gt(nextDeposit.amount)
+          ? -1
+          : deposit.amount.eq(nextDeposit.amount)
+          ? 0
+          : 1
+      );
+
+      console.log(
+        "updatedDeposits",
+        updatedDeposits.filter((deposit) => !deposit.amount.isZero())
+      );
+      setDeposits(
+        updatedDeposits.filter((deposit) => !deposit.amount.isZero())
+      );
+    }
+  };
+  const getDepositedAmount = async (tokenAddress: string, chainId?: number) => {
+    const data = await readContract({
+      address: deployment[chainId || (currentChain?.id as number)].erc20safe,
+      abi: ERC20Safe.abi,
+      functionName: "getDepositedAmount",
+      args: [account.address, tokenAddress],
+      chainId: chainId || currentChain?.id,
+    });
+
+    return data as BigNumber;
+  };
+
+  // CLAIMS
   const fetchClaims = async () => {
     fetchingClaims.on();
 
     let claims: ClaimStruct[] = [];
-    for (const chain of chains) {
+    for (const chain of configuredChains) {
       const bridgeContract = getContract({
-        address: addresses[chain.id].bridge,
+        address: deployment[chain.id].bridge,
         abi: Bridge.abi,
-        signerOrProvider: provider({ chainId: chain.id }),
+        signerOrProvider: getProvider({ chainId: chain.id }),
       });
 
       const depositFilterByOwner = bridgeContract?.filters.Deposit(
@@ -249,13 +481,13 @@ function BridgeView({ provider, chains }: BridgeProps) {
           chain
         );
 
-        if (!BigNumber.from(depositedAmount).isZero()) {
+        if (!BigNumber.from(depositedAmount).isZero() && tokenData) {
           claims.push({
             claimId: claims.length,
             token: tokenData,
             amount: availableToClaim,
             sourceChainId: chain.id,
-            targetChainId: chains.find((ch) => ch.id !== chain.id)
+            targetChainId: configuredChains.find((ch) => ch.id !== chain.id)
               ?.id as number,
             isClaimed: isClaimed,
           });
@@ -266,12 +498,198 @@ function BridgeView({ provider, chains }: BridgeProps) {
 
     fetchingClaims.off();
   };
+  const updateClaimAfterDeposit = async (
+    owner: string,
+    tokenAddress: string,
+    amount: string
+  ) => {
+    try {
+      if (owner === account.address) {
+        console.log("updating claim after deposit...");
+        console.log("claims before updating", userClaims);
+        let claims: ClaimStruct[] = [];
+
+        const claimIndex = userClaims.findIndex(
+          (claim) =>
+            claim.token.address.toLowerCase() === tokenAddress.toLowerCase()
+        );
+
+        claims =
+          claimIndex !== -1
+            ? userClaims.map((claim, index) => {
+                if (claimIndex === index) {
+                  if (claim.isClaimed) {
+                    claim.amount = BigNumber.from(amount);
+                    claim.isClaimed = false;
+                  } else {
+                    claim.amount = claim.amount.add(amount);
+                  }
+                }
+                return claim;
+              })
+            : [
+                ...userClaims,
+                {
+                  claimId: claims.length,
+                  token: (await getTokenData(
+                    tokenAddress,
+                    currentChain?.id as number
+                  )) as TokenData,
+                  amount: BigNumber.from(amount),
+                  sourceChainId: currentChain?.id as number,
+                  targetChainId: configuredChains.find(
+                    (ch) => ch.id !== currentChain?.id
+                  )?.id as number,
+                  isClaimed: false,
+                },
+              ];
+
+        console.log("claims", claims);
+        setClaims(claims);
+      }
+    } catch (err) {
+      console.log("Error 'updateToken'", (err as Error).message);
+    }
+  };
+  const updateClaimAfterRelease = async (
+    owner: string,
+    tokenAddress: string,
+    amount: string
+  ) => {
+    try {
+      if (owner === account.address) {
+        console.log("updating claim after release...");
+        console.log("claims before updating", userClaims);
+        let claims: ClaimStruct[] = userClaims;
+
+        const claimIndex = userClaims.findIndex(
+          (claim) =>
+            claim.token.address.toLowerCase() === tokenAddress.toLowerCase()
+        );
+
+        if (claimIndex !== -1) {
+          claims = await Promise.all(
+            userClaims
+              .map(async (claim, index) => {
+                if (claimIndex === index && !claim.isClaimed) {
+                  const expectedAmount = claim.amount.sub(amount);
+                  const depositedAmount = await getDepositedAmount(
+                    claim.token.address
+                  );
+
+                  if (expectedAmount.isZero() && depositedAmount.isZero())
+                    claim.amount = expectedAmount;
+
+                  if (!expectedAmount.isZero() && !depositedAmount.isZero()) {
+                    claim.amount = expectedAmount;
+                  }
+
+                  if (expectedAmount.isZero() && !depositedAmount.isZero()) {
+                    claim.amount = depositedAmount;
+                    claim.isClaimed = true;
+                  }
+                }
+                return claim;
+              })
+              .filter(async (claim) => !(await claim).amount.isZero())
+          );
+        }
+
+        console.log("claims", claims);
+        setClaims(claims);
+      }
+    } catch (err) {
+      console.log("Error 'updateToken'", (err as Error).message);
+    }
+  };
+  const updateClaimAfterBurn = async (
+    owner: string,
+    tokenAddress: string,
+    amount: string
+  ) => {
+    try {
+      if (owner === account.address) {
+        console.log("updating claim after burn...");
+        console.log("claims before updating", userClaims);
+        let claims: ClaimStruct[] = userClaims;
+
+        const claimIndex = userClaims.findIndex(
+          (claim) =>
+            claim.token.address.toLowerCase() === tokenAddress.toLowerCase()
+        );
+
+        if (claimIndex !== -1) {
+          claims = userClaims.map((claim, index) => {
+            if (claimIndex === index) {
+              if (claim.isClaimed) {
+                claim.amount = BigNumber.from(amount);
+                claim.isClaimed = false;
+              } else {
+                claim.amount = claim.amount.add(amount);
+              }
+            }
+            return claim;
+          });
+        }
+
+        console.log("claims", claims);
+        setClaims(claims);
+      }
+    } catch (err) {
+      console.log("Error 'updateToken'", (err as Error).message);
+    }
+  };
+  const updateClaimAfterClaim = async (
+    owner: string,
+    sourceTokenAddress: string,
+    amount: string
+  ) => {
+    try {
+      if (owner === account.address) {
+        console.log("updating claim after claim...");
+        console.log("claims before updating", userClaims);
+        let claims: ClaimStruct[] = userClaims;
+
+        const claimIndex = userClaims.findIndex(
+          (claim) =>
+            claim.token.address.toLowerCase() ===
+            sourceTokenAddress.toLowerCase()
+        );
+
+        if (claimIndex !== -1) {
+          claims = await Promise.all(
+            userClaims
+              .map(async (claim, index) => {
+                if (claimIndex === index) {
+                  claim.isClaimed = true;
+
+                  const depositedAmount = await getDepositedAmount(
+                    claim.token.address,
+                    configuredChains.find((ch) => ch.id !== currentChain?.id)
+                      ?.id as number
+                  );
+
+                  claim.amount = depositedAmount;
+                }
+                return claim;
+              })
+              .filter(async (claim) => !(await claim).amount.isZero())
+          );
+        }
+
+        console.log("claims", claims);
+        setClaims(claims);
+      }
+    } catch (err) {
+      console.log("Error 'updateToken'", (err as Error).message);
+    }
+  };
   const isTokenClaimed = async (token: Address, chain: Chain) => {
     // SOURCE CHAIN
     const bridgeContract = getContract({
-      address: addresses[chain.id].bridge,
+      address: deployment[chain.id].bridge,
       abi: Bridge.abi,
-      signerOrProvider: provider({
+      signerOrProvider: getProvider({
         chainId: chain.id,
       }),
     });
@@ -302,15 +720,17 @@ function BridgeView({ provider, chains }: BridgeProps) {
 
     const sourceChainAmount = allDeposits.sub(allReleases);
 
-    console.log("allDeposits", formatFixed(allDeposits, 18));
-    console.log("allReleases", formatFixed(allReleases, 18));
+    // console.log("allDeposits", formatFixed(allDeposits, 18));
+    // console.log("allReleases", formatFixed(allReleases, 18));
 
     // TARGET CHAIN
-    const targetChain = chains.find((ch) => ch.id !== chain.id) as Chain;
+    const targetChain = configuredChains.find(
+      (ch) => ch.id !== chain.id
+    ) as Chain;
     const targetBridgeContract = getContract({
-      address: addresses[targetChain.id].bridge,
+      address: deployment[targetChain.id].bridge,
       abi: Bridge.abi,
-      signerOrProvider: provider({
+      signerOrProvider: getProvider({
         chainId: targetChain.id,
       }),
     });
@@ -344,11 +764,11 @@ function BridgeView({ provider, chains }: BridgeProps) {
     );
 
     const targetChainAmount = allWithdrawals.sub(allBurns);
-    console.log("allBurns", formatFixed(allBurns, 18));
-    console.log("allWithdrawals", formatFixed(allWithdrawals, 18));
+    // console.log("allBurns", formatFixed(allBurns, 18));
+    // console.log("allWithdrawals", formatFixed(allWithdrawals, 18));
 
-    console.log("sourceChainAmount", formatFixed(sourceChainAmount, 18));
-    console.log("targetChainAmount", formatFixed(targetChainAmount, 18));
+    // console.log("sourceChainAmount", formatFixed(sourceChainAmount, 18));
+    // console.log("targetChainAmount", formatFixed(targetChainAmount, 18));
 
     return {
       isClaimed: targetChainAmount.gte(sourceChainAmount),
@@ -356,118 +776,6 @@ function BridgeView({ provider, chains }: BridgeProps) {
         ? targetChainAmount
         : sourceChainAmount.sub(targetChainAmount),
     };
-  };
-  const getDepositedAmount = async (
-    tokenAddress: Address,
-    chainId?: number
-  ) => {
-    const data = await readContract({
-      address: addresses[chainId || (currentChain?.id as number)].erc20safe,
-      abi: ERC20Safe.abi,
-      functionName: "getDepositedAmount",
-      args: [account.address, tokenAddress],
-      chainId: chainId || currentChain?.id,
-    });
-
-    return data as BigNumber;
-  };
-  const getTokenData = async (tokenAddress: Address, chainId?: number) => {
-    const token = await fetchToken({
-      address: tokenAddress,
-      chainId: chainId || currentChain?.id,
-    });
-
-    const tokenInfo = (await readContract({
-      address: addresses[chainId || (currentChain?.id as number)].erc20safe,
-      abi: ERC20Safe.abi,
-      functionName: "getTokenInfo",
-      args: [tokenAddress],
-      chainId: chainId || currentChain?.id,
-    })) as TokenInfo;
-
-    return { ...token, tokenInfo } as TokenData;
-  };
-  const getUserTokens = async () => {
-    const tokens = await alchemy
-      .forNetwork(networks[currentChain?.id as number])
-      .core.getTokenBalances(account.address as string);
-
-    const userTokens: UserTokenData[] = [];
-    for (const token of tokens.tokenBalances) {
-      if (!BigNumber.from(token.tokenBalance).isZero()) {
-        const userToken = {
-          ...(await getTokenData(token.contractAddress as Address)),
-          userBalance: token.tokenBalance,
-        } as UserTokenData;
-
-        userTokens.push(userToken);
-      }
-    }
-    setUserTokens(userTokens);
-  };
-  const updateDeposits = async (owner: Address, tokenAddress: Address) => {
-    if (owner === account.address) {
-      const depositIndex = userDeposits.findIndex(
-        (deposit) => deposit.token.address === tokenAddress
-      );
-
-      const depositedAmount = await getDepositedAmount(tokenAddress as Address);
-      const tokenData = await getTokenData(tokenAddress as Address);
-
-      const updatedDeposits =
-        depositIndex === -1
-          ? [
-              ...userDeposits,
-              {
-                token: tokenData,
-                amount: depositedAmount,
-              } as DepositStruct,
-            ]
-          : userDeposits.map((deposit, index) => {
-              if (depositIndex === index) deposit.amount = depositedAmount;
-              return deposit;
-            });
-
-      // updatedDeposits.sort((deposit, nextDeposit) =>
-      //   nextDeposit.amount.sub(deposit.amount).toNumber()
-      // );
-
-      setDeposits(
-        updatedDeposits.filter((deposit) => !deposit.amount.isZero())
-      );
-    }
-  };
-  const updateClaims = async (owner: Address, tokenAddress: Address) => {
-    if (owner === account.address) {
-      const claimIndex = userClaims.findIndex(
-        (claim) => claim.token.address === tokenAddress
-      );
-
-      const depositedAmount = await getDepositedAmount(tokenAddress as Address);
-      const tokenData = await getTokenData(tokenAddress as Address);
-
-      const updatedDeposits =
-        claimIndex === -1
-          ? [
-              ...userClaims,
-              {
-                token: tokenData,
-                amount: depositedAmount,
-              } as DepositStruct,
-            ]
-          : userDeposits.map((deposit, index) => {
-              if (claimIndex === index) deposit.amount = depositedAmount;
-              return deposit;
-            });
-
-      // updatedDeposits.sort((deposit, nextDeposit) =>
-      //   nextDeposit.amount.sub(deposit.amount).toNumber()
-      // );
-
-      setDeposits(
-        updatedDeposits.filter((deposit) => !deposit.amount.isZero())
-      );
-    }
   };
 
   return (
@@ -482,17 +790,28 @@ function BridgeView({ provider, chains }: BridgeProps) {
           <TabPanels>
             <TabPanel>
               <DepositView
+                currentChainId={currentChain?.id as number}
                 alchemy={alchemy}
                 availableChains={availableChains}
                 currentUserAddress={account.address as Address}
+                currentUserToken={currentUserToken}
+                setCurrentUserToken={setCurrentUserToken}
+                amount={amount}
+                isValidDepositAmount={isValidDepositAmount}
+                setIsValidDepositAmount={setIsValidDepositAmount}
+                isValidReleaseAmount={isValidReleaseAmount}
+                setIsValidReleaseAmount={setIsValidReleaseAmount}
+                setAmount={setAmount}
                 userTokens={userTokens}
                 userDeposits={userDeposits}
                 depositsAreFetching={depositsAreFetching}
                 getTokenData={getTokenData}
                 getDepositedAmount={getDepositedAmount}
-                getUserTokens={getUserTokens}
+                getUserTokens={fetchUserTokens}
                 userClaims={userClaims}
                 handleChainSelect={handleChainSelect}
+                updateCurrentUserToken={updateCurrentUserToken}
+                validateAmount={validateAmount}
               />
             </TabPanel>
             <TabPanel>
@@ -501,10 +820,10 @@ function BridgeView({ provider, chains }: BridgeProps) {
                 claimsAreFetching={claimsAreFetching}
                 currentChain={currentChain as Chain}
                 targetChain={targetChain as Chain}
-                chains={chains}
-                availableChains={chains}
+                chains={configuredChains}
+                availableChains={availableChains}
                 currentAddress={account.address as Address}
-                isNetworkSwitching={isNetworkSwitching}
+                isNetworkSwitching={networkSwitcher.isLoading}
                 getTokenData={getTokenData}
                 handleNetworkSwitch={handleNetworkSwitch}
               />

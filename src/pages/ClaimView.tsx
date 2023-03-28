@@ -84,7 +84,7 @@ import type {
   TokenData,
   DepositStruct,
 } from "../utils/types";
-import { addresses } from "../utils/consts&enums";
+import { deployment } from "../utils/consts&enums";
 import type { ClaimStruct, TxStruct } from "../utils/types";
 import { CheckIcon, CloseIcon } from "@chakra-ui/icons";
 type ClaimProps = {
@@ -96,7 +96,10 @@ type ClaimProps = {
   availableChains: Chain[];
   currentAddress: Address;
   isNetworkSwitching: boolean;
-  getTokenData: (tokenAddress: Address, chainId?: number) => Promise<TokenData>;
+  getTokenData: (
+    tokenAddress: Address,
+    chainId?: number
+  ) => Promise<TokenData | null>;
   handleNetworkSwitch: () => void;
 };
 const ClaimView = ({
@@ -128,6 +131,7 @@ const ClaimView = ({
   const handleCloseModal = () => {
     setClaimTx({ hash: "", err: "" });
     claimProcess.off();
+    tokenClaim.off();
   };
 
   const bytes32ToAddress = (address: string) => {
@@ -148,7 +152,7 @@ const ClaimView = ({
   ) => {
     try {
       const config = await prepareWriteContract({
-        address: addresses[currentChain.id].bridge,
+        address: deployment[currentChain.id].bridge,
         abi: Bridge.abi,
         functionName: "withdraw",
         args: [
@@ -165,6 +169,7 @@ const ClaimView = ({
 
       const reciept = await tx.wait();
       console.log("reciept.logs", reciept.logs);
+
       const wrappedToken = await getTokenData(
         bytes32ToAddress(
           BigNumber.from(reciept.logs[0].topics[2]).isZero()
@@ -172,6 +177,8 @@ const ClaimView = ({
             : reciept.logs[0].topics[2]
         )
       );
+
+      if (!wrappedToken) throw new Error();
 
       setWrappedToken(wrappedToken);
       console.log("wrapped token", wrappedToken);
@@ -182,7 +189,6 @@ const ClaimView = ({
   };
 
   const handleClaimClick = async (claim: ClaimStruct) => {
-    console.log("Claim", claim);
     try {
       claimProcess.on();
       tokenClaim.off();
@@ -212,7 +218,7 @@ const ClaimView = ({
       const wasAdded = window.ethereum?.request({
         method: "wallet_watchAsset",
         params: {
-          type: "ERC20", // Initially only supports ERC20, but eventually more!
+          type: "ERC20",
           options: {
             address: wrappedToken?.address as Address, // The address that the token is at.
             symbol: wrappedToken?.symbol as string, // A ticker symbol or shorthand, up to 5 chars.
@@ -352,7 +358,7 @@ const ClaimView = ({
         <ModalOverlay />
         <ModalContent>
           <ModalHeader textAlign="center">Claiming</ModalHeader>
-          <ModalCloseButton />
+          {(claimTx.err || tokenClaimed) && <ModalCloseButton />}
           <ModalBody>
             <Card mb="3">
               <CardBody>
