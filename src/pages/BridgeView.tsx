@@ -15,7 +15,7 @@ import {
   ProviderWithFallbackConfig,
   readContract,
 } from "@wagmi/core";
-import { BigNumber, constants, EventFilter, providers } from "ethers";
+import { BigNumber, constants, ethers, EventFilter, providers } from "ethers";
 import { BaseSyntheticEvent, useEffect, useState } from "react";
 import {
   Address,
@@ -28,6 +28,7 @@ import {
   useClient,
 } from "wagmi";
 import Bridge from "../abi/Bridge.json";
+import ERC165 from "../abi/ERC165.json";
 import ERC20Safe from "../abi/ERC20Safe.json";
 import alchemy from "../utils/alchemy/alchemy";
 import { deployment, TokenType } from "../utils/consts&enums";
@@ -307,6 +308,19 @@ function BridgeView({ configuredChains }: BridgeProps) {
         chainId: chainId || currentChain?.id,
       });
 
+      let isPermit: boolean;
+      try {
+        isPermit = (await readContract({
+          address: tokenAddress as Address,
+          abi: ERC165.abi,
+          functionName: "supportsInterface",
+          args: ["0x9d8ff7da"],
+          chainId: chainId || currentChain?.id,
+        })) as boolean;
+      } catch {
+        isPermit = false;
+      }
+
       const tokenInfo = (await readContract({
         address: deployment[chainId || (currentChain?.id as number)].erc20safe,
         abi: ERC20Safe.abi,
@@ -315,7 +329,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
         chainId: chainId || currentChain?.id,
       })) as TokenInfo;
 
-      return { ...token, tokenInfo } as TokenData;
+      return { ...token, tokenInfo, isPermit } as TokenData;
     } catch (err) {
       console.log("Error 'getTokenData'", (err as Error).message);
       return null;
@@ -569,34 +583,35 @@ function BridgeView({ configuredChains }: BridgeProps) {
 
         if (claimIndex !== -1) {
           claims = await Promise.all(
-            userClaims
-              .map(async (claim, index) => {
-                if (claimIndex === index && !claim.isClaimed) {
-                  const expectedAmount = claim.amount.sub(amount);
-                  const depositedAmount = await getDepositedAmount(
-                    claim.token.address
-                  );
+            userClaims.map(async (claim, index) => {
+              if (claimIndex === index && !claim.isClaimed) {
+                const expectedAmount = claim.amount.sub(amount);
+                const depositedAmount = await getDepositedAmount(
+                  claim.token.address
+                );
 
-                  if (expectedAmount.isZero() && depositedAmount.isZero())
-                    claim.amount = expectedAmount;
+                if (expectedAmount.isZero() && depositedAmount.isZero())
+                  claim.amount = expectedAmount;
 
-                  if (!expectedAmount.isZero() && !depositedAmount.isZero()) {
-                    claim.amount = expectedAmount;
-                  }
-
-                  if (expectedAmount.isZero() && !depositedAmount.isZero()) {
-                    claim.amount = depositedAmount;
-                    claim.isClaimed = true;
-                  }
+                if (!expectedAmount.isZero() && !depositedAmount.isZero()) {
+                  claim.amount = expectedAmount;
                 }
-                return claim;
-              })
-              .filter(async (claim) => !(await claim).amount.isZero())
+
+                if (expectedAmount.isZero() && !depositedAmount.isZero()) {
+                  claim.amount = depositedAmount;
+                  claim.isClaimed = true;
+                }
+              }
+              return claim;
+            })
           );
         }
 
-        console.log("claims", claims);
-        setClaims(claims);
+        console.log(
+          "claims",
+          claims.filter((claim) => !claim.amount.isZero())
+        );
+        setClaims(claims.filter((claim) => !claim.amount.isZero()));
       }
     } catch (err) {
       console.log("Error 'updateToken'", (err as Error).message);

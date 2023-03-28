@@ -63,6 +63,11 @@
           "type": "string"
         },
         {
+          "internalType": "bool",
+          "name": "_isSourceTokenPermit",
+          "type": "bool"
+        },
+        {
           "internalType": "address",
           "name": "_wrappedToken",
           "type": "address"
@@ -111,6 +116,11 @@
               "internalType": "string",
               "name": "sourceTokenName",
               "type": "string"
+            },
+            {
+              "internalType": "bool",
+              "name": "isSourceTokenPermit",
+              "type": "bool"
             },
             {
               "internalType": "address",
@@ -193,6 +203,11 @@
               "internalType": "string",
               "name": "sourceTokenName",
               "type": "string"
+            },
+            {
+              "internalType": "bool",
+              "name": "isSourceTokenPermit",
+              "type": "bool"
             },
             {
               "internalType": "address",

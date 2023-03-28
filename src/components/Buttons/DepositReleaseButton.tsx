@@ -19,9 +19,10 @@ import {
   useDisclosure,
 } from "@chakra-ui/react";
 import { getNetwork } from "@wagmi/core";
-import type { TxStruct } from "../../utils/types";
+import type { TxStruct, UserTokenData } from "../../utils/types";
 
 type DepositReleaseButtonProps = {
+  currentUserToken: UserTokenData;
   tokenApproved: boolean;
   tokenDeposited: boolean;
   tokenReleased: boolean;
@@ -38,6 +39,7 @@ type DepositReleaseButtonProps = {
 };
 
 const LockReleaseButton = ({
+  currentUserToken,
   tokenApproved,
   tokenDeposited,
   tokenReleased,
@@ -108,7 +110,11 @@ const LockReleaseButton = ({
                 <Card mb="3">
                   <CardBody>
                     <Flex justifyContent="space-between" alignItems="center">
-                      <Heading fontSize="3xl">Approval</Heading>
+                      <Heading fontSize="3xl">
+                        {currentUserToken.isPermit
+                          ? "Permit message"
+                          : "Approval"}
+                      </Heading>
                       {tokenApproved ? (
                         <CheckIcon boxSize="8" />
                       ) : approvalTx.err ? (
@@ -122,15 +128,20 @@ const LockReleaseButton = ({
                         Tx data: {approvalTx.err}
                       </Text>
                     )}
-                    {approvalTx.hash && (
+                    {approvalTx.data && !currentUserToken.isPermit && (
                       <Link
                         fontSize="small"
                         color="teal.500"
-                        href={`${currentChain?.blockExplorers?.default.url}/tx/${approvalTx.hash}`}
+                        href={`${currentChain?.blockExplorers?.default.url}/tx/${approvalTx.data}`}
                         isExternal
                       >
-                        Tx data: {approvalTx.hash}
+                        Tx data: {approvalTx.data}
                       </Link>
+                    )}
+                    {approvalTx.data && currentUserToken.isPermit && (
+                      <Text color="green" fontSize="small">
+                        Signed: {approvalTx.data}
+                      </Text>
                     )}
                   </CardBody>
                 </Card>
@@ -152,14 +163,14 @@ const LockReleaseButton = ({
                         Tx data: {depositTx.err}
                       </Text>
                     )}
-                    {depositTx.hash && (
+                    {depositTx.data && (
                       <Link
                         fontSize="small"
                         color="teal.500"
-                        href={`${currentChain?.blockExplorers?.default.url}/tx/${depositTx.hash}`}
+                        href={`${currentChain?.blockExplorers?.default.url}/tx/${depositTx.data}`}
                         isExternal
                       >
-                        Tx data: {depositTx.hash}
+                        Tx data: {depositTx.data}
                       </Link>
                     )}
                   </CardBody>
@@ -188,14 +199,14 @@ const LockReleaseButton = ({
                         Tx data: {releaseTx.err}
                       </Text>
                     )}
-                    {releaseTx.hash && (
+                    {releaseTx.data && (
                       <Link
                         fontSize="small"
                         color="teal.500"
-                        href={`${currentChain?.blockExplorers?.default.url}/tx/${releaseTx.hash}`}
+                        href={`${currentChain?.blockExplorers?.default.url}/tx/${releaseTx.data}`}
                         isExternal
                       >
-                        Tx data: {releaseTx.hash}
+                        Tx data: {releaseTx.data}
                       </Link>
                     )}
                   </CardBody>

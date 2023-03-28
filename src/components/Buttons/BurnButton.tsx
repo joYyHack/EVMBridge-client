@@ -23,10 +23,11 @@ import { BaseSyntheticEvent } from "react";
 import { Card, CardHeader, CardBody, CardFooter } from "@chakra-ui/react";
 import { CheckIcon, CloseIcon } from "@chakra-ui/icons";
 import { Chain } from "wagmi";
-import type { TxStruct } from "../../utils/types";
+import type { TxStruct, UserTokenData } from "../../utils/types";
 import { getNetwork } from "@wagmi/core";
 
 type BurnButtonProps = {
+  currentUserToken: UserTokenData;
   tokenApproved: boolean;
   tokenBurnt: boolean;
   burn: () => Promise<void>;
@@ -38,6 +39,7 @@ type BurnButtonProps = {
 };
 
 const BurnButton = ({
+  currentUserToken,
   tokenApproved,
   tokenBurnt,
   burn,
@@ -85,7 +87,11 @@ const BurnButton = ({
                 <Card mb="3">
                   <CardBody>
                     <Flex justifyContent="space-between" alignItems="center">
-                      <Heading fontSize="3xl">Approval</Heading>
+                      <Heading fontSize="3xl">
+                        {currentUserToken.isPermit
+                          ? "Permit message"
+                          : "Approval"}
+                      </Heading>
                       {tokenApproved ? (
                         <CheckIcon boxSize="8" />
                       ) : approvalTx.err ? (
@@ -99,15 +105,20 @@ const BurnButton = ({
                         Tx data: {approvalTx.err}
                       </Text>
                     )}
-                    {approvalTx.hash && (
+                    {approvalTx.data && !currentUserToken.isPermit && (
                       <Link
                         fontSize="small"
                         color="teal.500"
-                        href={`${currentChain?.blockExplorers?.default.url}/tx/${approvalTx.hash}`}
+                        href={`${currentChain?.blockExplorers?.default.url}/tx/${approvalTx.data}`}
                         isExternal
                       >
-                        Tx data: {approvalTx.hash}
+                        Tx data: {approvalTx.data}
                       </Link>
+                    )}
+                    {approvalTx.data && currentUserToken.isPermit && (
+                      <Text color="green" fontSize="small">
+                        Signed: {approvalTx.data}
+                      </Text>
                     )}
                   </CardBody>
                 </Card>
@@ -129,14 +140,14 @@ const BurnButton = ({
                         Tx data: {burnTx.err}
                       </Text>
                     )}
-                    {burnTx.hash && (
+                    {burnTx.data && (
                       <Link
                         fontSize="small"
                         color="teal.500"
-                        href={`${currentChain?.blockExplorers?.default.url}/tx/${burnTx.hash}`}
+                        href={`${currentChain?.blockExplorers?.default.url}/tx/${burnTx.data}`}
                         isExternal
                       >
-                        Tx data: {burnTx.hash}
+                        Tx data: {burnTx.data}
                       </Link>
                     )}
                   </CardBody>
