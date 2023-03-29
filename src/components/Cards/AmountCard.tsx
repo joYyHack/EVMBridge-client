@@ -82,12 +82,13 @@ const AmountCard = ({
             </NumberInputStepper>
           </NumberInput>
           <Box ml="5" textAlign="center">
-            {currentUserToken && (
-              <>
-                <Text>Balance</Text>
-                <Text>{parseBalance(currentUserToken)}</Text>
-              </>
-            )}
+            {currentUserToken &&
+              !BigNumber.from(currentUserToken.userBalance).isZero() && (
+                <>
+                  <Text>Balance</Text>
+                  <Text>{parseBalance(currentUserToken)}</Text>
+                </>
+              )}
           </Box>
         </Flex>
       </CardBody>

@@ -9,6 +9,7 @@ export type TokenInfo = {
 export type TokenData = Omit<FetchTokenResult, "totalSupply" | "address"> & {
   address: string;
   tokenInfo: TokenInfo;
+  isPermit: boolean;
 };
 export type UserTokenData = TokenData & {
   userBalance: string;
@@ -16,6 +17,16 @@ export type UserTokenData = TokenData & {
 export type DepositStruct = {
   token: TokenData;
   amount: BigNumber;
+};
+export type PermitRequest = {
+  owner: string;
+  spender: string;
+  value: BigNumber;
+  nonce: BigNumber;
+  deadline: BigNumber;
+  v: number;
+  r: string;
+  s: string;
 };
 export type ClaimStruct = DepositStruct & {
   claimId: number;
@@ -29,6 +40,6 @@ export type ValidationResult = {
   validationObj?: any;
 };
 export type TxStruct = {
-  hash: string;
+  data: string;
   err: string;
 };

@@ -122,14 +122,14 @@ const ClaimView = ({
   const [tokenClaimed, tokenClaim] = useBoolean();
   const [inClaim, claimProcess] = useBoolean();
   const [claimTx, setClaimTx] = useState<TxStruct>({
-    hash: "",
+    data: "",
     err: "",
   });
   const [wrappedToken, setWrappedToken] = useState<TokenData>();
 
   // MODAL
   const handleCloseModal = () => {
-    setClaimTx({ hash: "", err: "" });
+    setClaimTx({ data: "", err: "" });
     claimProcess.off();
     tokenClaim.off();
   };
@@ -147,6 +147,7 @@ const ClaimView = ({
     sourceToken: Address,
     sourceTokenSymbol: string,
     sourceTokenName: string,
+    isSourceTokenPermit: boolean,
     amount: BigNumber,
     signature: string
   ) => {
@@ -159,13 +160,14 @@ const ClaimView = ({
           sourceToken,
           sourceTokenSymbol,
           sourceTokenName,
+          isSourceTokenPermit,
           amount,
           signature,
         ],
       });
 
       const tx = await writeContract(config);
-      setClaimTx({ hash: tx.hash, err: "" });
+      setClaimTx({ data: tx.hash, err: "" });
 
       const reciept = await tx.wait();
       console.log("reciept.logs", reciept.logs);
@@ -183,7 +185,7 @@ const ClaimView = ({
       setWrappedToken(wrappedToken);
       console.log("wrapped token", wrappedToken);
     } catch (e) {
-      setClaimTx({ hash: "", err: (e as Error).message });
+      setClaimTx({ data: "", err: (e as Error).message });
       throw new Error();
     }
   };
@@ -205,6 +207,7 @@ const ClaimView = ({
         claim.token.address as Address,
         req.sourceTokenSymbol,
         req.sourceTokenName,
+        req.isSourceTokenPermit,
         claim.amount,
         sig
       );
@@ -377,14 +380,14 @@ const ClaimView = ({
                     Tx data: {claimTx.err}
                   </Text>
                 )}
-                {claimTx.hash && (
+                {claimTx.data && (
                   <Link
                     fontSize="small"
                     color="teal.500"
-                    href={`${currentChain.blockExplorers?.default.url}/tx/${claimTx.hash}`}
+                    href={`${currentChain.blockExplorers?.default.url}/tx/${claimTx.data}`}
                     isExternal
                   >
-                    Tx data: {claimTx.hash}
+                    Tx data: {claimTx.data}
                   </Link>
                 )}
               </CardBody>

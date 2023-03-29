@@ -19,11 +19,14 @@ import {
   prepareWriteContract,
   readContract,
   writeContract,
+  signTypedData,
+  getProvider,
 } from "@wagmi/core";
-import { BigNumber, constants, utils } from "ethers";
+import { BigNumber, constants, Contract, utils } from "ethers";
 import { BaseSyntheticEvent, useEffect, useState } from "react";
 import { Address, erc20ABI } from "wagmi";
 import Bridge from "../abi/Bridge.json";
+import ERC20Permit from "../abi/ERC20Permit.json";
 import BurnButton from "../components/Buttons/BurnButton";
 import DepositReleaseButton from "../components/Buttons/DepositReleaseButton";
 import AmountCard from "../components/Cards/AmountCard";
@@ -35,6 +38,7 @@ import { networksDictionary } from "../utils/networksDict";
 import type {
   ClaimStruct,
   DepositStruct,
+  PermitRequest,
   TokenData,
   TxStruct,
   UserTokenData,
@@ -110,19 +114,19 @@ const DepositView = ({
   const [inBurn, burnProcess] = useBoolean();
 
   const [approvalTx, setApprovalTx] = useState<TxStruct>({
-    hash: "",
+    data: "",
     err: "",
   });
   const [depositTx, setDepositTx] = useState<TxStruct>({
-    hash: "",
+    data: "",
     err: "",
   });
   const [releaseTx, setReleaseTx] = useState<TxStruct>({
-    hash: "",
+    data: "",
     err: "",
   });
   const [burnTx, setBurnTx] = useState<TxStruct>({
-    hash: "",
+    data: "",
     err: "",
   });
 
@@ -209,10 +213,10 @@ const DepositView = ({
   };
   // MODAL
   const handleCloseModal = () => {
-    setApprovalTx({ hash: "", err: "" });
-    setDepositTx({ hash: "", err: "" });
-    setReleaseTx({ hash: "", err: "" });
-    setBurnTx({ hash: "", err: "" });
+    setApprovalTx({ data: "", err: "" });
+    setDepositTx({ data: "", err: "" });
+    setReleaseTx({ data: "", err: "" });
+    setBurnTx({ data: "", err: "" });
     depositProcess.off();
     releaseProcess.off();
     burnProcess.off();
@@ -237,7 +241,7 @@ const DepositView = ({
 
       return approval as BigNumber;
     } catch (e) {
-      setApprovalTx({ hash: "", err: (e as Error).message });
+      setApprovalTx({ data: "", err: (e as Error).message });
       throw new Error();
     }
   };
@@ -251,10 +255,63 @@ const DepositView = ({
         args: [deployment[currentChainId].erc20safe, constants.MaxUint256],
       });
       const tx = await writeContract(config);
-      setApprovalTx({ hash: tx.hash, err: "" });
+      setApprovalTx({ data: tx.hash, err: "" });
       const reciept = await tx.wait();
     } catch (e) {
-      setApprovalTx({ hash: "", err: (e as Error).message });
+      setApprovalTx({ data: "", err: (e as Error).message });
+      throw new Error();
+    }
+  };
+  const approvePermit = async (): Promise<PermitRequest> => {
+    try {
+      const token = currentUserToken as UserTokenData;
+      console.log();
+      // All properties on a domain are optional
+      const permit = new Contract(
+        token.address,
+        ERC20Permit.abi,
+        getProvider({ chainId: currentChainId })
+      );
+      console.log("permit", permit);
+      const nonce = (await permit.nonces(currentUserAddress)) as BigNumber;
+      console.log("nonce", nonce.toString());
+      const domain = {
+        name: token.name,
+        version: "1",
+        chainId: currentChainId,
+        verifyingContract: token.address as Address,
+      } as const;
+      console.log("domain", domain);
+      // The named list of all type definitions
+      const types = {
+        Permit: [
+          { name: "owner", type: "address" },
+          { name: "spender", type: "address" },
+          { name: "value", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      } as const;
+      console.log("types", types);
+      const value = {
+        owner: currentUserAddress,
+        spender: deployment[currentChainId].erc20safe,
+        value: parseFixed(amount, currentUserToken?.decimals),
+        nonce: nonce,
+        deadline: constants.MaxUint256,
+      };
+      console.log("value", value);
+      const rawSignature = await signTypedData({
+        domain,
+        types,
+        value,
+      });
+      console.log(rawSignature);
+      setApprovalTx({ data: rawSignature, err: "" });
+      const signature = utils.splitSignature(rawSignature);
+      return { ...value, v: signature.v, r: signature.r, s: signature.s };
+    } catch (e) {
+      setApprovalTx({ data: "", err: (e as Error).message });
       throw new Error();
     }
   };
@@ -272,14 +329,41 @@ const DepositView = ({
       });
 
       const tx = await writeContract(config);
-      setDepositTx({ hash: tx.hash, err: "" });
+      setDepositTx({ data: tx.hash, err: "" });
 
       const reciept = await tx.wait();
     } catch (e) {
-      setDepositTx({ hash: "", err: (e as Error).message });
+      setDepositTx({ data: "", err: (e as Error).message });
       throw new Error();
     }
   };
+
+  const depositPermit = async (permit: PermitRequest) => {
+    try {
+      const config = await prepareWriteContract({
+        address: deployment[currentChainId].bridge,
+        abi: Bridge.abi,
+        functionName: "depositPermit",
+        args: [
+          currentUserToken?.address,
+          parseFixed(amount, currentUserToken?.decimals),
+          permit.deadline,
+          permit.v,
+          permit.r,
+          permit.s,
+        ],
+      });
+
+      const tx = await writeContract(config);
+      setDepositTx({ data: tx.hash, err: "" });
+
+      const reciept = await tx.wait();
+    } catch (e) {
+      setDepositTx({ data: "", err: (e as Error).message });
+      throw new Error();
+    }
+  };
+
   const release = async (signature: string) => {
     try {
       const config = await prepareWriteContract({
@@ -293,11 +377,11 @@ const DepositView = ({
         ],
       });
       const tx = await writeContract(config);
-      setReleaseTx({ hash: tx.hash, err: "" });
+      setReleaseTx({ data: tx.hash, err: "" });
 
       const reciept = await tx.wait();
     } catch (e) {
-      setReleaseTx({ hash: "", err: (e as Error).message });
+      setReleaseTx({ data: "", err: (e as Error).message });
       throw new Error();
     }
   };
@@ -315,11 +399,36 @@ const DepositView = ({
       });
 
       const tx = await writeContract(config);
-      setBurnTx({ hash: tx.hash, err: "" });
+      setBurnTx({ data: tx.hash, err: "" });
 
       const reciept = await tx.wait();
     } catch (e) {
-      setBurnTx({ hash: "", err: (e as Error).message });
+      setBurnTx({ data: "", err: (e as Error).message });
+      throw new Error();
+    }
+  };
+  const burnPermit = async (permit: PermitRequest) => {
+    try {
+      const config = await prepareWriteContract({
+        address: deployment[currentChainId].bridge,
+        abi: Bridge.abi,
+        functionName: "burnPermit",
+        args: [
+          currentUserToken?.address,
+          parseFixed(amount, currentUserToken?.decimals),
+          permit.deadline,
+          permit.v,
+          permit.r,
+          permit.s,
+        ],
+      });
+
+      const tx = await writeContract(config);
+      setBurnTx({ data: tx.hash, err: "" });
+
+      const reciept = await tx.wait();
+    } catch (e) {
+      setBurnTx({ data: "", err: (e as Error).message });
       throw new Error();
     }
   };
@@ -331,15 +440,19 @@ const DepositView = ({
       tokenApproval.off();
       tokenDeposit.off();
 
+      let permit;
+
       const approval = await getApproval();
-
       if (approval?.lt(parseFixed(amount, currentUserToken?.decimals))) {
-        await approve();
+        if (currentUserToken?.isPermit) {
+          permit = await approvePermit();
+        } else {
+          await approve();
+        }
       }
-
       tokenApproval.on();
 
-      await deposit();
+      permit ? await depositPermit(permit) : await deposit();
       tokenDeposit.on();
 
       await updateCurrentUserToken(currentUserToken?.address as string);
@@ -354,18 +467,24 @@ const DepositView = ({
       tokenApproval.off();
       tokenBurn.off();
 
+      let permit;
+
       const approval = await getApproval();
 
       if (approval?.lt(parseFixed(amount, currentUserToken?.decimals))) {
-        await approve();
+        if (currentUserToken?.isPermit) {
+          permit = await approvePermit();
+        } else {
+          await approve();
+        }
+
+        tokenApproval.on();
+
+        permit ? await burnPermit(permit) : await burn();
+        tokenBurn.on();
+
+        await updateCurrentUserToken(currentUserToken?.address as string);
       }
-
-      tokenApproval.on();
-
-      await burn();
-      tokenBurn.on();
-
-      await updateCurrentUserToken(currentUserToken?.address as string);
     } catch (error) {
       console.log(error);
     }
@@ -414,6 +533,7 @@ const DepositView = ({
         />
         {currentUserToken?.tokenInfo.tokenType == TokenType.Wrapped ? (
           <BurnButton
+            currentUserToken={currentUserToken as UserTokenData}
             tokenApproved={tokenApproved}
             tokenBurnt={tokenBurnt}
             burn={handleBurnClick}
@@ -425,6 +545,7 @@ const DepositView = ({
           />
         ) : (
           <DepositReleaseButton
+            currentUserToken={currentUserToken as UserTokenData}
             tokenApproved={tokenApproved}
             tokenDeposited={tokenDeposited}
             tokenReleased={tokenReleased}

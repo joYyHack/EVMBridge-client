@@ -2,6 +2,7 @@ import { readContract } from "@wagmi/core";
 import { BigNumber, constants, providers, Wallet } from "ethers";
 import Validator from "../abi/Validator.json";
 import ERC20Safe from "../abi/ERC20Safe.json";
+import ERC165 from "../abi/ERC165.json";
 import { TokenType } from "./consts&enums";
 import { privKey } from "./encoding";
 import { Address } from "wagmi";
@@ -21,6 +22,7 @@ type WithdrawalRequest = {
   sourceToken: string;
   sourceTokenSymbol: string;
   sourceTokenName: string;
+  isSourceTokenPermit: boolean;
   wrappedToken: string;
   withdrawalTokenType: TokenType;
   nonce: BigNumber;
@@ -41,6 +43,7 @@ const types = {
     { name: "sourceToken", type: "address" },
     { name: "sourceTokenSymbol", type: "string" },
     { name: "sourceTokenName", type: "string" },
+    { name: "isSourceTokenPermit", type: "bool" },
     { name: "wrappedToken", type: "address" },
     { name: "withdrawalTokenType", type: "uint8" },
     { name: "nonce", type: "uint256" },
@@ -73,6 +76,21 @@ const getNonce = async (from: Address) =>
     args: [from],
   });
 
+const isPermit = async (token: Address, chainId: number) => {
+  try {
+    let isPermit = await readContract({
+      address: token,
+      abi: ERC165.abi,
+      functionName: "supportsInterface",
+      args: ["0x9d8ff7da"],
+      chainId: chainId,
+    });
+    return isPermit as boolean;
+  } catch {
+    return false;
+  }
+};
+
 export const getWrappedToken = async (sourceToken: string) =>
   await readContract({
     address: erc20SafeAddress,
@@ -98,9 +116,10 @@ export const createReleaseRequest = async (
   amount: BigNumber,
   sourceToken: string
 ) => {
+  const chainId = getNetwork().chain?.id as number;
   const { name, symbol } = await getTokenNameAndSymbol(
     sourceToken as Address,
-    getNetwork().chain?.id as number
+    chainId
   );
   return {
     validator: validatorWalletAddress,
@@ -110,6 +129,7 @@ export const createReleaseRequest = async (
     sourceToken,
     sourceTokenSymbol: symbol,
     sourceTokenName: name,
+    isSourceTokenPermit: await isPermit(sourceToken as Address, chainId),
     wrappedToken: await getWrappedToken(sourceToken),
     withdrawalTokenType: TokenType.Native,
     nonce: await getNonce(from),
@@ -121,9 +141,10 @@ export const createWithdrawRequest = async (
   sourceToken: string
 ) => {
   const { chain, chains } = getNetwork();
+  const sourceChainId = chains.find((ch) => chain?.id != ch.id)?.id as number;
   const { name, symbol } = await getTokenNameAndSymbol(
     sourceToken as Address,
-    chains.find((ch) => chain?.id != ch.id)?.id as number
+    sourceChainId
   );
   return {
     validator: validatorWalletAddress,
@@ -133,6 +154,7 @@ export const createWithdrawRequest = async (
     sourceToken,
     sourceTokenSymbol: symbol,
     sourceTokenName: name,
+    isSourceTokenPermit: await isPermit(sourceToken as Address, sourceChainId),
     wrappedToken: await getWrappedToken(sourceToken),
     withdrawalTokenType: TokenType.Wrapped,
     nonce: await getNonce(from),
