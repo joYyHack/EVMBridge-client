@@ -105,6 +105,22 @@ function BridgeView({ configuredChains }: BridgeProps) {
     async function initValidator() {
       await setValidator(provider);
     }
+    // async function createWithdrawRequest() {
+    //   const response = await fetch("/api/v1/createWithdrawRequest", {
+    //     method: "POST",
+    //     body: JSON.stringify({
+    //       from: "0x9cA9C597425f7472D6DD6Ae628b61F80C6D272bA",
+    //       amount: 9,
+    //       sourceToken: "0x04a39559a3bc78032b73684204b439d478365940",
+    //       chainId: 11155111,
+    //     }),
+    //     headers: { "Content-Type": "application/json" },
+    //   });
+
+    //   console.log("data", await response.json());
+    // }
+
+    // createWithdrawRequest();
     initValidator();
   }, [currentChain]);
 

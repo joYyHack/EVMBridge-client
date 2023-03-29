@@ -91,7 +91,7 @@ const isPermit = async (token: Address, chainId: number) => {
   }
 };
 
-export const getWrappedToken = async (sourceToken: string) =>
+const getWrappedToken = async (sourceToken: string) =>
   await readContract({
     address: erc20SafeAddress,
     abi: ERC20Safe.abi,
@@ -99,10 +99,7 @@ export const getWrappedToken = async (sourceToken: string) =>
     args: [sourceToken],
   });
 
-export const getTokenNameAndSymbol = async (
-  token: Address,
-  chainId: number
-) => {
+const getTokenNameAndSymbol = async (token: Address, chainId: number) => {
   const tokenData = await fetchToken({
     address: token,
     chainId: chainId,
@@ -163,5 +160,7 @@ export const createWithdrawRequest = async (
 
 export const signWithdrawalRequest = async (value: WithdrawalRequest) => {
   const sig = await signer._signTypedData(domain, types, value);
+  console.log("domain", domain);
+  console.log("value", value);
   return sig;
 };

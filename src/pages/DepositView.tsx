@@ -495,12 +495,25 @@ const DepositView = ({
 
       tokenRelease.off();
 
-      const req = await createReleaseRequest(
-        currentUserAddress,
-        parseFixed(amount, currentUserToken?.decimals),
-        currentUserToken?.address ?? constants.AddressZero
-      );
-      const sig = await signWithdrawalRequest(req);
+      // const req = await createReleaseRequest(
+      //   currentUserAddress,
+      //   parseFixed(amount, currentUserToken?.decimals),
+      //   currentUserToken?.address ?? constants.AddressZero
+      // );
+
+      //const sig = await signWithdrawalRequest(req);
+      const response = await fetch("/api/v1/createReleaseRequest", {
+        method: "POST",
+        body: JSON.stringify({
+          from: currentUserAddress,
+          amount: parseFixed(amount, currentUserToken?.decimals).toString(),
+          sourceToken: currentUserToken?.address,
+          chainId: currentChainId,
+        }),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const { sig } = await response.json();
 
       await release(sig);
       tokenRelease.on();

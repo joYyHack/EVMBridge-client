@@ -72,10 +72,8 @@ import BridgeCard from "../components/Cards/BridgeCard";
 import TokenCard from "../components/Cards/TokenCard";
 import { formatFixed } from "@ethersproject/bignumber";
 import {
-  setValidator,
   createReleaseRequest,
   signWithdrawalRequest,
-  getWrappedToken,
   createWithdrawRequest,
 } from "../utils/validator";
 import type {
@@ -195,19 +193,37 @@ const ClaimView = ({
       claimProcess.on();
       tokenClaim.off();
 
-      const req = await createWithdrawRequest(
-        currentAddress as Address,
-        claim.amount,
-        claim.token.address
-      );
+      const response = await fetch("/api/v1/createWithdrawRequest", {
+        method: "POST",
+        body: JSON.stringify({
+          from: currentAddress,
+          amount: claim.amount.toString(),
+          sourceToken: claim.token.address,
+          chainId: currentChain.id,
+        }),
+        headers: { "Content-Type": "application/json" },
+      });
 
-      const sig = await signWithdrawalRequest(req);
+      const { sourceTokenSymbol, sourceTokenName, isSourceTokenPermit, sig } =
+        await response.json();
+
+      //console.log("sig", (await response.json()).sig);
+
+      // const req = await createWithdrawRequest(
+      //   currentAddress as Address,
+      //   claim.amount,
+      //   claim.token.address
+      // );
+
+      // const { sourceTokenSymbol, sourceTokenName, isSourceTokenPermit } = req;
+
+      // const sig = await signWithdrawalRequest(req);
 
       await withdraw(
         claim.token.address as Address,
-        req.sourceTokenSymbol,
-        req.sourceTokenName,
-        req.isSourceTokenPermit,
+        sourceTokenSymbol,
+        sourceTokenName,
+        isSourceTokenPermit,
         claim.amount,
         sig
       );
