@@ -40,3 +40,6 @@ npm install
 ```bash
 npm start
 ```
+## Known issues
+* If something seems to be working incorrectly, try to refresh the page.
+* Sometimes the 'switch network' button does not respond when clicked. If this happens, please try refreshing the page.
