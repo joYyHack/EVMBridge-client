@@ -784,6 +784,10 @@ function BridgeView({ configuredChains }: BridgeProps) {
         : sourceChainAmount.sub(targetChainAmount),
     };
   };
+  const getUserClaim = (token: string) =>
+    userClaims.find(
+      (claim) => claim.token.address.toLowerCase() === token.toLowerCase()
+    );
 
   return (
     <div className="bridge">
@@ -803,6 +807,8 @@ function BridgeView({ configuredChains }: BridgeProps) {
                 currentUserAddress={account.address as Address}
                 userTokens={userTokens}
                 userDeposits={userDeposits}
+                getUserClaim={getUserClaim}
+                claimsAreFetching={claimsAreFetching}
                 currentUserToken={currentUserToken}
                 setUserToken={setUserToken}
                 amount={amount}
