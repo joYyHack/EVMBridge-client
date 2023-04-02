@@ -16,14 +16,14 @@ import { formatFixed, parseFixed } from "@ethersproject/bignumber";
 import {
   Chain,
   getNetwork as network,
+  getProvider,
   prepareWriteContract,
   readContract,
-  writeContract,
   signTypedData,
-  getProvider,
+  writeContract,
 } from "@wagmi/core";
 import { BigNumber, constants, Contract, utils } from "ethers";
-import { BaseSyntheticEvent, useEffect, useState } from "react";
+import { BaseSyntheticEvent, useState } from "react";
 import { Address, erc20ABI } from "wagmi";
 import Bridge from "../abi/Bridge.json";
 import ERC20Permit from "../abi/ERC20Permit.json";
@@ -34,7 +34,7 @@ import BridgeCard from "../components/Cards/BridgeCard";
 import TokenCard from "../components/Cards/TokenCard";
 import { AlchemyMultichainClient } from "../utils/alchemy/alchemy-multichain-client";
 import { deployment, TokenType } from "../utils/consts&enums";
-import { networksDictionary } from "../utils/networksDict";
+import { networks } from "../utils/networksDict";
 import type {
   ClaimStruct,
   DepositStruct,
@@ -44,10 +44,6 @@ import type {
   UserTokenData,
   ValidationResult,
 } from "../utils/types";
-import {
-  createReleaseRequest,
-  signWithdrawalRequest,
-} from "../utils/validator";
 
 type DepositProps = {
   alchemy: AlchemyMultichainClient;
@@ -61,7 +57,6 @@ type DepositProps = {
   userTokens: UserTokenData[];
   userDeposits: DepositStruct[];
   depositsAreFetching: boolean;
-  userClaims: ClaimStruct[];
   setCurrentUserToken: React.Dispatch<
     React.SetStateAction<UserTokenData | undefined>
   >;
@@ -90,7 +85,6 @@ const DepositView = ({
   userTokens,
   userDeposits,
   depositsAreFetching,
-  userClaims,
   currentUserToken,
   setCurrentUserToken,
   amount,
@@ -151,7 +145,7 @@ const DepositView = ({
     if (utils.isAddress(val)) {
       if (
         (await alchemy
-          .forNetwork(networksDictionary[network().chain?.id as number])
+          .forNetwork(networks[network().chain?.id as number])
           .core.getCode(val)) !== "0x"
       ) {
         try {
@@ -161,7 +155,7 @@ const DepositView = ({
 
           const userBalance = (
             await alchemy
-              .forNetwork(networksDictionary[currentChainId])
+              .forNetwork(networks[currentChainId])
               .core.getTokenBalances(currentUserAddress, [token.address])
           ).tokenBalances[0].tokenBalance;
 
@@ -236,7 +230,7 @@ const DepositView = ({
           (currentUserToken?.address as Address) ?? constants.AddressZero,
         abi: erc20ABI,
         functionName: "allowance",
-        args: [currentUserAddress, deployment[currentChainId].erc20safe],
+        args: [currentUserAddress, deployment.erc20safe],
       });
 
       return approval as BigNumber;
@@ -252,11 +246,11 @@ const DepositView = ({
           (currentUserToken?.address as Address) ?? constants.AddressZero,
         abi: erc20ABI,
         functionName: "approve",
-        args: [deployment[currentChainId].erc20safe, constants.MaxUint256],
+        args: [deployment.erc20safe, constants.MaxUint256],
       });
       const tx = await writeContract(config);
       setApprovalTx({ data: tx.hash, err: "" });
-      const reciept = await tx.wait();
+      await tx.wait();
     } catch (e) {
       setApprovalTx({ data: "", err: (e as Error).message });
       throw new Error();
@@ -265,23 +259,19 @@ const DepositView = ({
   const approvePermit = async (): Promise<PermitRequest> => {
     try {
       const token = currentUserToken as UserTokenData;
-      console.log();
       // All properties on a domain are optional
       const permit = new Contract(
         token.address,
         ERC20Permit.abi,
         getProvider({ chainId: currentChainId })
       );
-      console.log("permit", permit);
       const nonce = (await permit.nonces(currentUserAddress)) as BigNumber;
-      console.log("nonce", nonce.toString());
       const domain = {
         name: token.name,
         version: "1",
         chainId: currentChainId,
         verifyingContract: token.address as Address,
       } as const;
-      console.log("domain", domain);
       // The named list of all type definitions
       const types = {
         Permit: [
@@ -292,21 +282,18 @@ const DepositView = ({
           { name: "deadline", type: "uint256" },
         ],
       } as const;
-      console.log("types", types);
       const value = {
         owner: currentUserAddress,
-        spender: deployment[currentChainId].erc20safe,
+        spender: deployment.erc20safe,
         value: parseFixed(amount, currentUserToken?.decimals),
         nonce: nonce,
         deadline: constants.MaxUint256,
       };
-      console.log("value", value);
       const rawSignature = await signTypedData({
         domain,
         types,
         value,
       });
-      console.log(rawSignature);
       setApprovalTx({ data: rawSignature, err: "" });
       const signature = utils.splitSignature(rawSignature);
       return { ...value, v: signature.v, r: signature.r, s: signature.s };
@@ -319,7 +306,7 @@ const DepositView = ({
   const deposit = async () => {
     try {
       const config = await prepareWriteContract({
-        address: deployment[currentChainId].bridge,
+        address: deployment.bridge,
         abi: Bridge.abi,
         functionName: "deposit",
         args: [
@@ -341,7 +328,7 @@ const DepositView = ({
   const depositPermit = async (permit: PermitRequest) => {
     try {
       const config = await prepareWriteContract({
-        address: deployment[currentChainId].bridge,
+        address: deployment.bridge,
         abi: Bridge.abi,
         functionName: "depositPermit",
         args: [
@@ -367,7 +354,7 @@ const DepositView = ({
   const release = async (signature: string) => {
     try {
       const config = await prepareWriteContract({
-        address: deployment[currentChainId].bridge,
+        address: deployment.bridge,
         abi: Bridge.abi,
         functionName: "release",
         args: [
@@ -389,7 +376,7 @@ const DepositView = ({
   const burn = async () => {
     try {
       const config = await prepareWriteContract({
-        address: deployment[currentChainId].bridge,
+        address: deployment.bridge,
         abi: Bridge.abi,
         functionName: "burn",
         args: [
@@ -410,7 +397,7 @@ const DepositView = ({
   const burnPermit = async (permit: PermitRequest) => {
     try {
       const config = await prepareWriteContract({
-        address: deployment[currentChainId].bridge,
+        address: deployment.bridge,
         abi: Bridge.abi,
         functionName: "burnPermit",
         args: [
@@ -470,21 +457,19 @@ const DepositView = ({
       let permit;
 
       const approval = await getApproval();
-
       if (approval?.lt(parseFixed(amount, currentUserToken?.decimals))) {
         if (currentUserToken?.isPermit) {
           permit = await approvePermit();
         } else {
           await approve();
         }
-
-        tokenApproval.on();
-
-        permit ? await burnPermit(permit) : await burn();
-        tokenBurn.on();
-
-        await updateCurrentUserToken(currentUserToken?.address as string);
       }
+      tokenApproval.on();
+
+      permit ? await burnPermit(permit) : await burn();
+      tokenBurn.on();
+
+      await updateCurrentUserToken(currentUserToken?.address as string);
     } catch (error) {
       console.log(error);
     }
@@ -495,12 +480,18 @@ const DepositView = ({
 
       tokenRelease.off();
 
-      const req = await createReleaseRequest(
-        currentUserAddress,
-        parseFixed(amount, currentUserToken?.decimals),
-        currentUserToken?.address ?? constants.AddressZero
-      );
-      const sig = await signWithdrawalRequest(req);
+      const response = await fetch("/api/v1/createReleaseRequest", {
+        method: "POST",
+        body: JSON.stringify({
+          from: currentUserAddress,
+          amount: parseFixed(amount, currentUserToken?.decimals).toString(),
+          sourceToken: currentUserToken?.address,
+          chainId: currentChainId,
+        }),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const { sig } = await response.json();
 
       await release(sig);
       tokenRelease.on();

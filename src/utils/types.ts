@@ -14,9 +14,19 @@ export type TokenData = Omit<FetchTokenResult, "totalSupply" | "address"> & {
 export type UserTokenData = TokenData & {
   userBalance: string;
 };
+export type TxStruct = {
+  data: string;
+  err: string;
+};
 export type DepositStruct = {
   token: TokenData;
   amount: BigNumber;
+};
+export type ClaimStruct = DepositStruct & {
+  claimId: number;
+  sourceChainId: number;
+  targetChainId: number;
+  isClaimed: boolean;
 };
 export type PermitRequest = {
   owner: string;
@@ -28,18 +38,9 @@ export type PermitRequest = {
   r: string;
   s: string;
 };
-export type ClaimStruct = DepositStruct & {
-  claimId: number;
-  sourceChainId: number;
-  targetChainId: number;
-  isClaimed: boolean;
-};
+
 export type ValidationResult = {
   isSuccess: boolean;
   errorMsg: string;
   validationObj?: any;
-};
-export type TxStruct = {
-  data: string;
-  err: string;
 };

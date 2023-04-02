@@ -5,25 +5,10 @@ export enum TokenType {
   Wrapped = 1,
 }
 
-interface IDeploymentAddress {
-  bridge: Address;
-  erc20safe: Address;
-  validator: Address;
-}
+export const PERMIT_SELECTOR = "0x9d8ff7da";
 
-interface IDeployment {
-  [chainId: number]: IDeploymentAddress;
-}
-
-export const deployment: IDeployment = {
-  11155111 /* sepolia */: {
-    bridge: "0x5EAb426BA4398cb951f0aA8C87047bE45E45aaA2",
-    erc20safe: "0xEB570d133E97d896a2431332f827F7DA6BCf2e70",
-    validator: "0x1278E54A70698d7b3B0A00855b34BE3E2f965a0B",
-  },
-  80001 /* mumbai */: {
-    bridge: "0x5EAb426BA4398cb951f0aA8C87047bE45E45aaA2",
-    erc20safe: "0xEB570d133E97d896a2431332f827F7DA6BCf2e70",
-    validator: "0x1278E54A70698d7b3B0A00855b34BE3E2f965a0B",
-  },
+export const deployment = {
+  bridge: "0xce56e2D1e03e653bc95F113177A2Be6002068B7E" as Address,
+  erc20safe: "0x268653b20B3a3aE011A42d2b0D6b9F97eC42ca2d" as Address,
+  validator: "0xb564990E0fD557345f4e87F10ECA0F641a557671" as Address,
 };
