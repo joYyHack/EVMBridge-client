@@ -44,7 +44,7 @@ import type {
   UserTokenData,
   ValidationResult,
 } from "../utils/types";
-
+import { truncate } from "../utils/truncate";
 type DepositProps = {
   alchemy: AlchemyMultichainClient;
   currentChainId: number;
@@ -56,10 +56,10 @@ type DepositProps = {
   amount: string;
   userTokens: UserTokenData[];
   userDeposits: DepositStruct[];
+  getUserClaim: (token: string) => ClaimStruct | undefined;
+  claimsAreFetching: boolean;
   depositsAreFetching: boolean;
-  setCurrentUserToken: React.Dispatch<
-    React.SetStateAction<UserTokenData | undefined>
-  >;
+  setUserToken: (currentUserToken: UserTokenData | undefined) => void;
   setIsValidDepositAmount: React.Dispatch<React.SetStateAction<boolean>>;
   setIsValidReleaseAmount: React.Dispatch<React.SetStateAction<boolean>>;
   setAmount: React.Dispatch<React.SetStateAction<string>>;
@@ -84,9 +84,11 @@ const DepositView = ({
   currentUserAddress,
   userTokens,
   userDeposits,
+  getUserClaim,
+  claimsAreFetching,
   depositsAreFetching,
   currentUserToken,
-  setCurrentUserToken,
+  setUserToken,
   amount,
   setAmount,
   isValidDepositAmount,
@@ -135,8 +137,8 @@ const DepositView = ({
       setIsValidDepositAmount(false);
       setIsValidReleaseAmount(false);
     }
-
-    setCurrentUserToken(selectedToken);
+    console.log("selected token", selectedToken);
+    setUserToken(selectedToken);
   };
   const validateTokenAddress = async (
     e: BaseSyntheticEvent
@@ -166,7 +168,7 @@ const DepositView = ({
 
           validateAmount(userToken, Number.parseFloat(amount));
 
-          setCurrentUserToken(userToken);
+          setUserToken(userToken);
 
           return {
             isSuccess: true,
@@ -578,14 +580,20 @@ const DepositView = ({
               <Flex direction="column">
                 <Divider my="4" />
                 <Flex direction="row" justifyContent="space-between">
-                  <Heading fontSize="md" flexBasis="40%" textAlign="left">
+                  <Heading fontSize="md" flexBasis="20%" textAlign="left">
                     Address
                   </Heading>
                   <Heading fontSize="md" flexBasis="20%" textAlign="center">
                     Symbol
                   </Heading>
-                  <Heading fontSize="md" flexBasis="40%" textAlign="right">
-                    Amount
+                  <Heading fontSize="md" flexBasis="20%" textAlign="right">
+                    Available To Release
+                  </Heading>
+                  <Heading fontSize="md" flexBasis="20%" textAlign="right">
+                    Claimed Amount
+                  </Heading>
+                  <Heading fontSize="md" flexBasis="20%" textAlign="right">
+                    Locked Amount
                   </Heading>
                 </Flex>
                 <Divider my="4" />
@@ -595,13 +603,41 @@ const DepositView = ({
                     direction="row"
                     justifyContent="space-between"
                   >
-                    <Text fontSize="md" flexBasis="40%" textAlign="left">
-                      {deposit.token.address}
+                    <Text fontSize="md" flexBasis="20%" textAlign="left">
+                      {truncate(deposit.token.address as string, 10)}
                     </Text>
                     <Text fontSize="md" flexBasis="20%" textAlign="center">
                       {deposit.token.symbol}
                     </Text>
-                    <Text fontSize="md" flexBasis="40%" textAlign="right">
+                    <Text fontSize="md" flexBasis="20%" textAlign="right">
+                      {claimsAreFetching ? (
+                        <Spinner size="md" />
+                      ) : (
+                        formatFixed(
+                          getUserClaim(deposit.token.address)?.isClaimed
+                            ? "0"
+                            : getUserClaim(deposit.token.address)?.amount ??
+                                "0",
+                          deposit.token.decimals
+                        )
+                      )}
+                    </Text>
+                    <Text fontSize="md" flexBasis="20%" textAlign="right">
+                      {claimsAreFetching ? (
+                        <Spinner size="md" />
+                      ) : (
+                        formatFixed(
+                          getUserClaim(deposit.token.address)?.isClaimed
+                            ? getUserClaim(deposit.token.address)?.amount ?? "0"
+                            : deposit.amount.sub(
+                                getUserClaim(deposit.token.address)?.amount ??
+                                  "0"
+                              ),
+                          deposit.token.decimals
+                        )
+                      )}
+                    </Text>
+                    <Text fontSize="md" flexBasis="20%" textAlign="right">
                       {formatFixed(deposit.amount, deposit.token.decimals)}
                     </Text>
                   </Flex>
