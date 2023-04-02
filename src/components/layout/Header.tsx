@@ -1,57 +1,39 @@
 import {
-  Box,
-  Flex,
   Avatar,
-  Link,
+  Box,
   Button,
+  Center,
+  Flex,
+  Heading,
   Menu,
   MenuButton,
-  MenuList,
-  MenuItem,
   MenuDivider,
-  useDisclosure,
-  useColorModeValue,
+  MenuItem,
+  MenuList,
   Stack,
-  useColorMode,
-  Center,
   Text,
-  Heading,
+  useColorModeValue,
 } from "@chakra-ui/react";
 
+import { useEffect } from "react";
 import {
+  Connector,
+  useAccount,
   useConnect,
   useDisconnect,
-  useAccount,
-  useBalance,
   useNetwork,
-  Connector,
 } from "wagmi";
-import { MetaMaskConnector } from "wagmi/connectors/metaMask";
-import { goerli, polygonMumbai as mumbai } from "wagmi/chains";
-
 import { truncate } from "../../utils/truncate";
 
 const md5 = require("md5");
 
-// const NavLink = ({ children }: { children: ReactNode }) => (
-//   <Link
-//     px={2}
-//     py={1}
-//     rounded={"md"}
-//     _hover={{
-//       textDecoration: "none",
-//       bg: useColorModeValue("gray.200", "gray.700"),
-//     }}
-//     href={"#"}
-//   >
-//     {children}
-//   </Link>
-// );
 type HeaderProps = {
   connector: Connector;
+  setConnectedStatus: (isConnected: boolean) => void;
 };
-export default function Header({ connector }: HeaderProps) {
+export default function Header({ connector, setConnectedStatus }: HeaderProps) {
   const { isConnected, address } = useAccount();
+
   const { connect, isLoading } = useConnect({
     connector,
   });
@@ -59,20 +41,27 @@ export default function Header({ connector }: HeaderProps) {
 
   const { chain } = useNetwork();
 
+  useEffect(() => {
+    console.log("isConnected - header", isConnected);
+    setConnectedStatus(isConnected);
+  }, [isConnected]);
+
   const handleConnectButtonClick = async () => {
     connect();
+    setConnectedStatus(true);
   };
 
   const handleDisconnectButtonClick = async () => {
     disconnect();
+    setConnectedStatus(false);
   };
 
   return (
     <>
       <Box bg={useColorModeValue("gray.100", "gray.900")} px={4}>
         <Flex h={16} alignItems={"center"} justifyContent={"space-between"}>
-          <Box minWidth="20%">Logo</Box>
-          <Heading>{chain?.name ?? ""}</Heading>
+          <Box minWidth="20%"></Box>
+          <Heading>{chain?.name ?? "ERC20 BRIDGE"}</Heading>
           <Flex minWidth="20%" alignItems={"center"} justify="right">
             <Stack direction={"row"} spacing={7}>
               {isConnected ? (

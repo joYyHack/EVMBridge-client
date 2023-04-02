@@ -6,16 +6,15 @@ import {
   Tabs,
   useBoolean,
 } from "@chakra-ui/react";
-import { formatFixed } from "@ethersproject/bignumber";
+import { parseFixed } from "@ethersproject/bignumber";
 import {
   Chain,
   fetchToken,
   getContract,
   getProvider,
-  ProviderWithFallbackConfig,
   readContract,
 } from "@wagmi/core";
-import { BigNumber, constants, ethers, EventFilter, providers } from "ethers";
+import { BigNumber, constants, EventFilter } from "ethers";
 import { BaseSyntheticEvent, useEffect, useState } from "react";
 import {
   Address,
@@ -25,14 +24,13 @@ import {
   useNetwork,
   useProvider,
   useSwitchNetwork,
-  useClient,
 } from "wagmi";
 import Bridge from "../abi/Bridge.json";
 import ERC165 from "../abi/ERC165.json";
 import ERC20Safe from "../abi/ERC20Safe.json";
 import alchemy from "../utils/alchemy/alchemy";
-import { deployment, TokenType } from "../utils/consts&enums";
-import { networksDictionary } from "../utils/networksDict";
+import { deployment, PERMIT_SELECTOR, TokenType } from "../utils/consts&enums";
+import { networks } from "../utils/networksDict";
 import type {
   ClaimStruct,
   DepositStruct,
@@ -40,25 +38,18 @@ import type {
   TokenInfo,
   UserTokenData,
 } from "../utils/types";
-import { setValidator } from "../utils/validator";
 import ClaimView from "./ClaimView";
 import DepositView from "./DepositView";
-import { parseFixed } from "@ethersproject/bignumber";
 type BridgeProps = {
   configuredChains: Chain[];
 };
+
 function BridgeView({ configuredChains }: BridgeProps) {
   const provider = useProvider();
   const account = useAccount();
 
   const { chain: currentChain } = useNetwork();
   const networkSwitcher = useSwitchNetwork();
-
-  const bridgeContract = useContract({
-    address: deployment[currentChain?.id as number].bridge,
-    abi: Bridge.abi,
-    signerOrProvider: provider,
-  });
 
   const [availableChains, setAvailableChains] = useState<Chain[]>(
     configuredChains.filter((ch) => ch.id !== currentChain?.id)
@@ -78,6 +69,12 @@ function BridgeView({ configuredChains }: BridgeProps) {
 
   const [depositsAreFetching, fetchingDeposits] = useBoolean();
   const [claimsAreFetching, fetchingClaims] = useBoolean();
+
+  const bridgeContract = useContract({
+    address: deployment.bridge,
+    abi: Bridge.abi,
+    signerOrProvider: provider,
+  });
 
   useEffect(() => {
     setCurrentUserToken(undefined);
@@ -101,31 +98,9 @@ function BridgeView({ configuredChains }: BridgeProps) {
     }
     trackAvailableChains();
   }, [currentChain]);
-  useEffect(() => {
-    async function initValidator() {
-      await setValidator(provider);
-    }
-    // async function createWithdrawRequest() {
-    //   const response = await fetch("/api/v1/createWithdrawRequest", {
-    //     method: "POST",
-    //     body: JSON.stringify({
-    //       from: "0x9cA9C597425f7472D6DD6Ae628b61F80C6D272bA",
-    //       amount: 9,
-    //       sourceToken: "0x04a39559a3bc78032b73684204b439d478365940",
-    //       chainId: 11155111,
-    //     }),
-    //     headers: { "Content-Type": "application/json" },
-    //   });
-
-    //   console.log("data", await response.json());
-    // }
-
-    // createWithdrawRequest();
-    initValidator();
-  }, [currentChain]);
 
   useContractEvent({
-    address: deployment[currentChain?.id as number].bridge,
+    address: deployment.bridge,
     abi: Bridge.abi,
     eventName: "Deposit",
     async listener(_depositer, _tokenAddress, _amount) {
@@ -139,7 +114,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
     },
   });
   useContractEvent({
-    address: deployment[currentChain?.id as number].bridge,
+    address: deployment.bridge,
     abi: Bridge.abi,
     eventName: "Release",
     async listener(_releaser, _tokenAddress, _amount) {
@@ -153,7 +128,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
     },
   });
   useContractEvent({
-    address: deployment[targetChain?.id as number].bridge,
+    address: deployment.bridge,
     abi: Bridge.abi,
     eventName: "Burn",
     async listener(_burner, _wrappedToken, _sourceToken, _amount) {
@@ -167,7 +142,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
     },
   });
   useContractEvent({
-    address: deployment[targetChain?.id as number].bridge,
+    address: deployment.bridge,
     abi: Bridge.abi,
     eventName: "Withdraw",
     async listener(_withdrawer, _sourceToken, _wrappedToken, _amount) {
@@ -182,7 +157,6 @@ function BridgeView({ configuredChains }: BridgeProps) {
 
       await updateClaimAfterClaim(withdrawer, sourceToken, amount);
       await updateToken(withdrawer, wrappedToken);
-      //
     },
   });
 
@@ -200,7 +174,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
   const fetchUserTokens = async () => {
     try {
       const tokens = await alchemy
-        .forNetwork(networksDictionary[currentChain?.id as number])
+        .forNetwork(networks[currentChain?.id as number])
         .core.getTokenBalances(account.address as string);
 
       const userTokens: UserTokenData[] = [];
@@ -226,6 +200,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
 
         return balance1.gt(balance2) ? -1 : balance1.eq(balance2) ? 0 : 1;
       });
+
       setUserTokens(userTokens);
     } catch (err) {
       console.log("Error 'getUserTokens'", (err as Error).message);
@@ -234,41 +209,36 @@ function BridgeView({ configuredChains }: BridgeProps) {
   const updateToken = async (owner: string, tokenAddress: string) => {
     try {
       if (owner === account.address) {
-        console.log("updating token...");
         const tokens = await alchemy
-          .forNetwork(networksDictionary[currentChain?.id as number])
+          .forNetwork(networks[currentChain?.id as number])
           .core.getTokenBalances(owner, [tokenAddress]);
-        console.log("tokens", tokens);
-        const currentToken = tokens.tokenBalances[0];
+
+        const token = tokens.tokenBalances[0];
 
         const tokenIndex = userTokens.findIndex(
           (tok) =>
-            tok.address.toLowerCase() ===
-            currentToken.contractAddress.toLowerCase()
+            tok.address.toLowerCase() === token.contractAddress.toLowerCase()
         );
 
         let udpatedUserTokens: UserTokenData[] = [];
 
-        if (!BigNumber.from(currentToken.tokenBalance).isZero()) {
+        if (!BigNumber.from(token.tokenBalance).isZero()) {
           if (tokenIndex === -1) {
             udpatedUserTokens = [...userTokens];
-            const tokenData = await getTokenData(currentToken.contractAddress);
+            const tokenData = await getTokenData(token.contractAddress);
 
             if (tokenData) {
               const userToken = {
                 ...tokenData,
-                userBalance: currentToken.tokenBalance,
+                userBalance: token.tokenBalance,
               } as UserTokenData;
 
               udpatedUserTokens.push(userToken);
             }
           } else {
             udpatedUserTokens = userTokens.map((token) => {
-              if (
-                token.address.toLowerCase() ===
-                currentToken.contractAddress.toLowerCase()
-              ) {
-                token.userBalance = currentToken.tokenBalance as string;
+              if (token.address.toLowerCase() === token.address.toLowerCase()) {
+                token.userBalance = token.userBalance as string;
               }
               return token;
             });
@@ -276,8 +246,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
         } else {
           udpatedUserTokens = userTokens.filter(
             (token) =>
-              token.address.toLowerCase() !==
-              currentToken.contractAddress.toLowerCase()
+              token.address.toLowerCase() !== token.address.toLowerCase()
           );
         }
 
@@ -288,7 +257,6 @@ function BridgeView({ configuredChains }: BridgeProps) {
           return balance1.gt(balance2) ? -1 : balance1.eq(balance2) ? 0 : 1;
         });
 
-        console.log("udpatedUserTokens", udpatedUserTokens);
         setUserTokens(udpatedUserTokens);
       }
     } catch (err) {
@@ -298,7 +266,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
   const updateCurrentUserToken = async (tokenAddress: string) => {
     const userBalance = (
       await alchemy
-        .forNetwork(networksDictionary[currentChain?.id as number])
+        .forNetwork(networks[currentChain?.id as number])
         .core.getTokenBalances(account.address as string, [tokenAddress])
     ).tokenBalances[0].tokenBalance;
 
@@ -330,7 +298,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
           address: tokenAddress as Address,
           abi: ERC165.abi,
           functionName: "supportsInterface",
-          args: ["0x9d8ff7da"],
+          args: [PERMIT_SELECTOR],
           chainId: chainId || currentChain?.id,
         })) as boolean;
       } catch {
@@ -338,7 +306,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
       }
 
       const tokenInfo = (await readContract({
-        address: deployment[chainId || (currentChain?.id as number)].erc20safe,
+        address: deployment.erc20safe,
         abi: ERC20Safe.abi,
         functionName: "getTokenInfo",
         args: [tokenAddress],
@@ -371,7 +339,6 @@ function BridgeView({ configuredChains }: BridgeProps) {
           : currentUserToken.tokenInfo.sourceToken.toLowerCase())
     );
 
-    // console.log("input", amount);
     setIsValidReleaseAmount(
       (!claim?.isClaimed &&
         claim?.amount.gte(
@@ -466,7 +433,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
   };
   const getDepositedAmount = async (tokenAddress: string, chainId?: number) => {
     const data = await readContract({
-      address: deployment[chainId || (currentChain?.id as number)].erc20safe,
+      address: deployment.erc20safe,
       abi: ERC20Safe.abi,
       functionName: "getDepositedAmount",
       args: [account.address, tokenAddress],
@@ -483,7 +450,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
     let claims: ClaimStruct[] = [];
     for (const chain of configuredChains) {
       const bridgeContract = getContract({
-        address: deployment[chain.id].bridge,
+        address: deployment.bridge,
         abi: Bridge.abi,
         signerOrProvider: getProvider({ chainId: chain.id }),
       });
@@ -718,7 +685,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
   const isTokenClaimed = async (token: Address, chain: Chain) => {
     // SOURCE CHAIN
     const bridgeContract = getContract({
-      address: deployment[chain.id].bridge,
+      address: deployment.bridge,
       abi: Bridge.abi,
       signerOrProvider: getProvider({
         chainId: chain.id,
@@ -759,7 +726,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
       (ch) => ch.id !== chain.id
     ) as Chain;
     const targetBridgeContract = getContract({
-      address: deployment[targetChain.id].bridge,
+      address: deployment.bridge,
       abi: Bridge.abi,
       signerOrProvider: getProvider({
         chainId: targetChain.id,
@@ -825,21 +792,20 @@ function BridgeView({ configuredChains }: BridgeProps) {
                 alchemy={alchemy}
                 availableChains={availableChains}
                 currentUserAddress={account.address as Address}
+                userTokens={userTokens}
+                userDeposits={userDeposits}
                 currentUserToken={currentUserToken}
                 setCurrentUserToken={setCurrentUserToken}
                 amount={amount}
+                setAmount={setAmount}
                 isValidDepositAmount={isValidDepositAmount}
                 setIsValidDepositAmount={setIsValidDepositAmount}
                 isValidReleaseAmount={isValidReleaseAmount}
                 setIsValidReleaseAmount={setIsValidReleaseAmount}
-                setAmount={setAmount}
-                userTokens={userTokens}
-                userDeposits={userDeposits}
                 depositsAreFetching={depositsAreFetching}
                 getTokenData={getTokenData}
                 getDepositedAmount={getDepositedAmount}
                 getUserTokens={fetchUserTokens}
-                userClaims={userClaims}
                 handleChainSelect={handleChainSelect}
                 updateCurrentUserToken={updateCurrentUserToken}
                 validateAmount={validateAmount}

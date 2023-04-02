@@ -1,13 +1,13 @@
-import WrappedERC20 from "../abi/WrappedERC20.json";
+import { CheckIcon, CloseIcon } from "@chakra-ui/icons";
 import {
-  Box,
   Button,
   Card,
   CardBody,
   CardFooter,
   CardHeader,
   Container,
-  HStack,
+  Flex,
+  Heading,
   Link,
   Modal,
   ModalBody,
@@ -18,73 +18,19 @@ import {
   ModalOverlay,
   SimpleGrid,
   Spinner,
-  Stack,
   Text,
   useBoolean,
   useDisclosure,
   VStack,
 } from "@chakra-ui/react";
-import {
-  Accordion,
-  AccordionButton,
-  AccordionItem,
-  AccordionPanel,
-  Divider,
-  Flex,
-  Heading,
-} from "@chakra-ui/react";
-import {
-  Chain,
-  fetchToken,
-  FetchTokenResult,
-  prepareWriteContract,
-  readContract,
-  writeContract,
-  getContract,
-  getProvider,
-} from "@wagmi/core";
-import {
-  BigNumber,
-  constants,
-  Contract,
-  ethers,
-  EventFilter,
-  providers,
-} from "ethers";
-import { parseEther, hexStripZeros } from "ethers/lib/utils.js";
-import { BaseSyntheticEvent, useEffect, useState } from "react";
-import {
-  configureChains,
-  erc20ABI,
-  useAccount,
-  useNetwork,
-  useContract,
-  useContractEvent,
-  Address,
-} from "wagmi";
-import { goerli, hardhat, polygonMumbai } from "wagmi/chains";
-import { publicProvider } from "wagmi/providers/public";
-import Bridge from "../abi/Bridge.json";
-import ERC20Safe from "../abi/ERC20Safe.json";
-import DepositReleaseButton from "../components/Buttons/DepositReleaseButton";
-import AmountCard from "../components/Cards/AmountCard";
-import BridgeCard from "../components/Cards/BridgeCard";
-import TokenCard from "../components/Cards/TokenCard";
 import { formatFixed } from "@ethersproject/bignumber";
-import {
-  createReleaseRequest,
-  signWithdrawalRequest,
-  createWithdrawRequest,
-} from "../utils/validator";
-import type {
-  UserTokenData,
-  ValidationResult,
-  TokenData,
-  DepositStruct,
-} from "../utils/types";
+import { Chain, prepareWriteContract, writeContract } from "@wagmi/core";
+import { BigNumber } from "ethers";
+import { useState } from "react";
+import { Address } from "wagmi";
+import Bridge from "../abi/Bridge.json";
 import { deployment } from "../utils/consts&enums";
-import type { ClaimStruct, TxStruct } from "../utils/types";
-import { CheckIcon, CloseIcon } from "@chakra-ui/icons";
+import type { ClaimStruct, TokenData, TxStruct } from "../utils/types";
 type ClaimProps = {
   userClaims: ClaimStruct[];
   claimsAreFetching: boolean;
@@ -151,7 +97,7 @@ const ClaimView = ({
   ) => {
     try {
       const config = await prepareWriteContract({
-        address: deployment[currentChain.id].bridge,
+        address: deployment.bridge,
         abi: Bridge.abi,
         functionName: "withdraw",
         args: [
@@ -206,18 +152,6 @@ const ClaimView = ({
 
       const { sourceTokenSymbol, sourceTokenName, isSourceTokenPermit, sig } =
         await response.json();
-
-      //console.log("sig", (await response.json()).sig);
-
-      // const req = await createWithdrawRequest(
-      //   currentAddress as Address,
-      //   claim.amount,
-      //   claim.token.address
-      // );
-
-      // const { sourceTokenSymbol, sourceTokenName, isSourceTokenPermit } = req;
-
-      // const sig = await signWithdrawalRequest(req);
 
       await withdraw(
         claim.token.address as Address,

@@ -11,14 +11,8 @@ import {
   Text,
   useBoolean,
 } from "@chakra-ui/react";
-import { FetchTokenResult } from "@wagmi/core";
 import { BaseSyntheticEvent, useState } from "react";
-import type {
-  UserTokenData,
-  ValidationResult,
-  TokenData,
-  DepositStruct,
-} from "../../utils/types";
+import type { UserTokenData, ValidationResult } from "../../utils/types";
 
 type TokenProps = {
   currentUserAddress: string | undefined;

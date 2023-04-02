@@ -1,35 +1,21 @@
 import {
+  Box,
   Card,
-  CardHeader,
   CardBody,
-  CardFooter,
+  CardHeader,
+  Flex,
   Heading,
-  Text,
-  Button,
-  InputGroup,
-  Input,
-  InputRightElement,
-  Stack,
+  NumberDecrementStepper,
+  NumberIncrementStepper,
   NumberInput,
   NumberInputField,
   NumberInputStepper,
-  NumberIncrementStepper,
-  NumberDecrementStepper,
-  Flex,
-  Box,
+  Text,
 } from "@chakra-ui/react";
-import { parseEther } from "ethers/lib/utils.js";
-import { formatFixed, parseFixed } from "@ethersproject/bignumber";
-import { BaseSyntheticEvent, useState } from "react";
-import { FetchTokenResult } from "@wagmi/core";
-import { createSecureContext } from "tls";
+import { formatFixed } from "@ethersproject/bignumber";
 import { BigNumber } from "ethers";
-import type {
-  UserTokenData,
-  ValidationResult,
-  TokenData,
-  DepositStruct,
-} from "../../utils/types";
+import { BaseSyntheticEvent } from "react";
+import type { UserTokenData } from "../../utils/types";
 
 type AmountCardProps = {
   currentUserToken: UserTokenData | undefined;

@@ -1,30 +1,25 @@
+import { CheckIcon, CloseIcon } from "@chakra-ui/icons";
 import {
-  Stack,
   Button,
-  ButtonGroup,
-  useDisclosure,
-  Text,
-  Heading,
+  Card,
+  CardBody,
   Flex,
-  Icon,
-  Spinner,
+  Heading,
   Link,
-} from "@chakra-ui/react";
-import {
   Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
   ModalBody,
   ModalCloseButton,
+  ModalContent,
+  ModalFooter,
+  ModalHeader,
+  ModalOverlay,
+  Spinner,
+  Stack,
+  Text,
+  useDisclosure,
 } from "@chakra-ui/react";
-import { BaseSyntheticEvent } from "react";
-import { Card, CardHeader, CardBody, CardFooter } from "@chakra-ui/react";
-import { CheckIcon, CloseIcon } from "@chakra-ui/icons";
-import { Chain } from "wagmi";
-import type { TxStruct, UserTokenData } from "../../utils/types";
 import { getNetwork } from "@wagmi/core";
+import type { TxStruct, UserTokenData } from "../../utils/types";
 
 type BurnButtonProps = {
   currentUserToken: UserTokenData;
