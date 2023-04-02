@@ -28,34 +28,11 @@ import { truncate } from "../../utils/truncate";
 const md5 = require("md5");
 
 type HeaderProps = {
-  connector: Connector;
+  handleConnectButtonClick : async() => void;
+  handleDisconnectButtonClick : async() => void;
   setConnectedStatus: (isConnected: boolean) => void;
 };
 export default function Header({ connector, setConnectedStatus }: HeaderProps) {
-  const { isConnected, address } = useAccount();
-
-  const { connect, isLoading } = useConnect({
-    connector,
-  });
-  const { disconnect } = useDisconnect();
-
-  const { chain } = useNetwork();
-
-  useEffect(() => {
-    console.log("isConnected - header", isConnected);
-    setConnectedStatus(isConnected);
-  }, [isConnected]);
-
-  const handleConnectButtonClick = async () => {
-    connect();
-    setConnectedStatus(true);
-  };
-
-  const handleDisconnectButtonClick = async () => {
-    disconnect();
-    setConnectedStatus(false);
-  };
-
   return (
     <>
       <Box bg={useColorModeValue("gray.100", "gray.900")} px={4}>
