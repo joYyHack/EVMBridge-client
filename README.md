@@ -1,46 +1,45 @@
-# Getting Started with Create React App
+# EVMBridge-client
+This project is like an interface for the [EVMBridge](https://github.com/joYyHack/EVMBridge) project. It visualizes all functions of the Bridge smart contract.
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+## Notes
+### Deposit
+* User can deposit ERC20 or ERC20 Permit tokens (that also implements ERC165) to the bridge.
+* User can not deposit wrapped token(if wrapped token was issued by this bridge).
 
-## Available Scripts
+### Claim
+* After deposit user can claim wrapped tokens on the target chain.
+* User has to manually switch to the desired chain, and the press claim on the claim tab.
+* If user deposited standart erc20 token than the same wrapped token is minted on the target chain. If user deposited ERC20 token with permit than the respective token is minted.
 
-In the project directory, you can run:
+### Burn
+* User can burn only wrapped tokens.
+* Burn is available only if the tokens were claimed.
+* When user burns tokens it means that they can be again claimed on the target chain or can released on the source chain.
 
-### `npm start`
+### Release
+* User can release only source tokens.
+* Release is avaiable only if tokens weren't claimed after deposit, or were burnt after claim.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+## Instalation
+> In order to run EVMBridge-client, the validator from the [EVMBridge-validator project](https://github.com/joYyHack/EVMBridge-validator) must be run before 
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+> Install dependencies
+```bash
+git clone https://github.com/joYyHack/EVMBridge-client.git
+npm install
+```
+> In the package.json specify the proxy field
+```json
+{
+  "name": "my-app",
+  "version": "0.1.0",
+  "private": true,
+  "proxy": "http://localhost:8000"
+}
+```
 
-### `npm test`
-
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
-
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+> Run
+>
+```bash
+npm start
+```
