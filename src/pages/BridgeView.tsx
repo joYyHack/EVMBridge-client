@@ -236,11 +236,14 @@ function BridgeView({ configuredChains }: BridgeProps) {
               udpatedUserTokens.push(userToken);
             }
           } else {
-            udpatedUserTokens = userTokens.map((token) => {
-              if (token.address.toLowerCase() === token.address.toLowerCase()) {
-                token.userBalance = token.userBalance as string;
+            udpatedUserTokens = userTokens.map((tok) => {
+              if (
+                tok.address.toLowerCase() ===
+                token.contractAddress.toLowerCase()
+              ) {
+                tok.userBalance = token.tokenBalance as string;
               }
-              return token;
+              return tok;
             });
           }
         } else {
@@ -256,7 +259,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
 
           return balance1.gt(balance2) ? -1 : balance1.eq(balance2) ? 0 : 1;
         });
-
+        console.log(udpatedUserTokens);
         setUserTokens(udpatedUserTokens);
       }
     } catch (err) {
@@ -278,13 +281,15 @@ function BridgeView({ configuredChains }: BridgeProps) {
     validateAmount(userToken, Number.parseFloat(amount));
 
     setCurrentUserToken(userToken);
-
+    console.log("current user token", userToken);
     return {
       isSuccess: true,
       errorMsg: "",
       validationObj: userToken as UserTokenData,
     };
   };
+  const setUserToken = (currentUserToken: UserTokenData | undefined) =>
+    setCurrentUserToken(currentUserToken);
   const getTokenData = async (tokenAddress: string, chainId?: number) => {
     try {
       const token = await fetchToken({
@@ -491,7 +496,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
         }
       }
     }
-    setClaims(claims);
+    setClaims(claims.sort((claim) => (claim.isClaimed ? 1 : -1)));
 
     fetchingClaims.off();
   };
@@ -542,7 +547,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
               ];
 
         console.log("claims", claims);
-        setClaims(claims);
+        setClaims(claims.sort((claim) => (claim.isClaimed ? 1 : -1)));
       }
     } catch (err) {
       console.log("Error 'updateToken'", (err as Error).message);
@@ -594,7 +599,11 @@ function BridgeView({ configuredChains }: BridgeProps) {
           "claims",
           claims.filter((claim) => !claim.amount.isZero())
         );
-        setClaims(claims.filter((claim) => !claim.amount.isZero()));
+        setClaims(
+          claims
+            .filter((claim) => !claim.amount.isZero())
+            .sort((claim) => (claim.isClaimed ? 1 : -1))
+        );
       }
     } catch (err) {
       console.log("Error 'updateToken'", (err as Error).message);
@@ -631,7 +640,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
         }
 
         console.log("claims", claims);
-        setClaims(claims);
+        setClaims(claims.sort((claim) => (claim.isClaimed ? 1 : -1)));
       }
     } catch (err) {
       console.log("Error 'updateToken'", (err as Error).message);
@@ -676,7 +685,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
         }
 
         console.log("claims", claims);
-        setClaims(claims);
+        setClaims(claims.sort((claim) => (claim.isClaimed ? 1 : -1)));
       }
     } catch (err) {
       console.log("Error 'updateToken'", (err as Error).message);
@@ -795,7 +804,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
                 userTokens={userTokens}
                 userDeposits={userDeposits}
                 currentUserToken={currentUserToken}
-                setCurrentUserToken={setCurrentUserToken}
+                setUserToken={setUserToken}
                 amount={amount}
                 setAmount={setAmount}
                 isValidDepositAmount={isValidDepositAmount}

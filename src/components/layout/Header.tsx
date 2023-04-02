@@ -17,6 +17,7 @@ import {
 
 import { useEffect } from "react";
 import {
+  Chain,
   Connector,
   useAccount,
   useConnect,
@@ -28,11 +29,21 @@ import { truncate } from "../../utils/truncate";
 const md5 = require("md5");
 
 type HeaderProps = {
-  handleConnectButtonClick : async() => void;
-  handleDisconnectButtonClick : async() => void;
-  setConnectedStatus: (isConnected: boolean) => void;
+  handleConnectButtonClick: () => Promise<void>;
+  handleDisconnectButtonClick: () => Promise<void>;
+  isConnected: boolean;
+  isLoading: boolean;
+  chain: Chain | undefined;
+  address: string | undefined;
 };
-export default function Header({ connector, setConnectedStatus }: HeaderProps) {
+export default function Header({
+  handleConnectButtonClick,
+  handleDisconnectButtonClick,
+  isConnected,
+  isLoading,
+  chain,
+  address,
+}: HeaderProps) {
   return (
     <>
       <Box bg={useColorModeValue("gray.100", "gray.900")} px={4}>

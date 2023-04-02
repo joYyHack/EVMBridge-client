@@ -36,7 +36,14 @@ function BridgeWrapper({ chains, connector }: BridgeWrapperProps) {
   };
   return (
     <>
-      <Header />
+      <Header
+        handleConnectButtonClick={handleConnectButtonClick}
+        handleDisconnectButtonClick={handleDisconnectButtonClick}
+        isConnected={isConnected}
+        isLoading={isLoading}
+        address={address}
+        chain={currentChain}
+      />
       <div className="main">
         {isConnected && chains.some((ch) => ch.id === currentChain?.id) ? (
           <Routes>
@@ -47,9 +54,13 @@ function BridgeWrapper({ chains, connector }: BridgeWrapperProps) {
           </Routes>
         ) : (
           <Center h="100vh">
-            <Text>
-              {/* {!isConnected ? "Connect your wallet" : `Incorrect chain.`} */}
-            </Text>
+            <Heading>
+              {!isConnected
+                ? "Connect your wallet"
+                : `Incorrect chain. Supported chains are: ${chains
+                    .map((ch) => ch.name)
+                    .join(", ")}`}
+            </Heading>
           </Center>
         )}
       </div>

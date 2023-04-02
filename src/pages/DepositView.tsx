@@ -57,9 +57,7 @@ type DepositProps = {
   userTokens: UserTokenData[];
   userDeposits: DepositStruct[];
   depositsAreFetching: boolean;
-  setCurrentUserToken: React.Dispatch<
-    React.SetStateAction<UserTokenData | undefined>
-  >;
+  setUserToken: (currentUserToken: UserTokenData | undefined) => void;
   setIsValidDepositAmount: React.Dispatch<React.SetStateAction<boolean>>;
   setIsValidReleaseAmount: React.Dispatch<React.SetStateAction<boolean>>;
   setAmount: React.Dispatch<React.SetStateAction<string>>;
@@ -86,7 +84,7 @@ const DepositView = ({
   userDeposits,
   depositsAreFetching,
   currentUserToken,
-  setCurrentUserToken,
+  setUserToken,
   amount,
   setAmount,
   isValidDepositAmount,
@@ -135,8 +133,8 @@ const DepositView = ({
       setIsValidDepositAmount(false);
       setIsValidReleaseAmount(false);
     }
-
-    setCurrentUserToken(selectedToken);
+    console.log("selected token", selectedToken);
+    setUserToken(selectedToken);
   };
   const validateTokenAddress = async (
     e: BaseSyntheticEvent
@@ -166,7 +164,7 @@ const DepositView = ({
 
           validateAmount(userToken, Number.parseFloat(amount));
 
-          setCurrentUserToken(userToken);
+          setUserToken(userToken);
 
           return {
             isSuccess: true,
