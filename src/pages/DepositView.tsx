@@ -457,21 +457,19 @@ const DepositView = ({
       let permit;
 
       const approval = await getApproval();
-
       if (approval?.lt(parseFixed(amount, currentUserToken?.decimals))) {
         if (currentUserToken?.isPermit) {
           permit = await approvePermit();
         } else {
           await approve();
         }
-
-        tokenApproval.on();
-
-        permit ? await burnPermit(permit) : await burn();
-        tokenBurn.on();
-
-        await updateCurrentUserToken(currentUserToken?.address as string);
       }
+      tokenApproval.on();
+
+      permit ? await burnPermit(permit) : await burn();
+      tokenBurn.on();
+
+      await updateCurrentUserToken(currentUserToken?.address as string);
     } catch (error) {
       console.log(error);
     }

@@ -214,7 +214,7 @@ function BridgeView({ configuredChains }: BridgeProps) {
           .core.getTokenBalances(owner, [tokenAddress]);
 
         const token = tokens.tokenBalances[0];
-
+        console.log(token.tokenBalance);
         const tokenIndex = userTokens.findIndex(
           (tok) =>
             tok.address.toLowerCase() === token.contractAddress.toLowerCase()
